@@ -98,16 +98,16 @@ body.tool-open{overflow:hidden}.tool-viewer{position:fixed;inset:0;z-index:100;d
 .lbn{position:fixed;top:50%;translate:0 -50%;width:48px;height:48px;border-radius:50%;border:1px solid var(--line);background:rgba(255,255,255,.14);color:#fff;font-size:26px;cursor:pointer;z-index:2}#lp{left:10px}#ln{right:10px}
 #lb{position:fixed;inset:0;z-index:50;background:rgba(3,8,20,.92);display:none;place-items:center;padding:4vw;cursor:zoom-out}
 #lb.on{display:grid}#lb img{max-width:100%;max-height:88vh;border-radius:18px;animation:up .5s forwards;transform:scale(.9);opacity:0}
-#hud{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:20;width:246px;padding:12px 14px;font:600 14px/1.4 Figtree,sans-serif;text-align:right;border-radius:18px;overflow:hidden}
-.alt-cue{display:block;padding:0 0 9px;border-bottom:1px solid var(--line);color:var(--ink);text-align:left;text-decoration:none}
+#hud{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:20;width:max-content;max-width:min(260px,calc(100vw - 32px));padding:12px 14px;font:600 14px/1.4 Figtree,sans-serif;text-align:right;border-radius:18px;overflow:hidden}
+.alt-cue{display:block;padding:0 0 9px;border-bottom:1px solid var(--line);color:var(--ink);text-align:right;text-decoration:none}
 .alt-cue:hover strong,.alt-cue:focus-visible strong{color:var(--gold)}
 .alt-cue:focus-visible{outline:2px solid var(--gold);outline-offset:4px;border-radius:5px}
 .alt-cue small{display:block;color:var(--gold);font-size:.7rem;line-height:1.1;letter-spacing:.12em;text-transform:uppercase}
-.alt-cue strong{display:block;margin-top:3px;font-size:.82rem;line-height:1.25;transition:color .25s}
+.alt-cue strong{display:block;margin-top:3px;font-size:.82rem;line-height:1.25;white-space:nowrap;transition:color .25s}
 #hud.fact-swap .alt-cue>*{animation:cueIn .38s cubic-bezier(.2,.8,.2,1)}
-.alt-readout{display:flex;align-items:baseline;justify-content:flex-end;gap:5px;padding-top:8px;color:var(--mute)}
+.alt-readout{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;column-gap:5px;padding-top:8px;color:var(--mute)}
+.alt-readout b{grid-column:2}.alt-readout span{grid-column:3;justify-self:start}
 #hud b{font:800 1.5rem Fraunces,serif;color:var(--gold)}
-.alt-note{display:block;margin-top:1px;color:var(--mute);font-size:.7rem;line-height:1.2}
 @keyframes cueIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
 #prog{position:fixed;top:0;left:0;height:4px;width:0;background:linear-gradient(90deg,var(--blue),var(--gold),var(--red));z-index:30}
 .contact{text-align:center;padding:60px 30px}.contact h2{margin-bottom:14px}
@@ -202,9 +202,9 @@ footer{text-align:center;color:var(--mute);padding:40px 6vw 90px;font-size:14px}
 <div class="btns" style="justify-content:center"><a class="btn p" href="David-LaBarre-Resume.pdf" download>Download Résumé</a><a class="btn" href="mailto:LaBarre2156@gmail.com">Email Me</a><a class="btn" href="#hero">Back to the Top</a></div></div></section>
 </main>
 <footer>© David LaBarre · Built to Fly</footer>
-<div id="hud" class="glass" aria-label="Scroll altitude and aviation quick cue">
+<div id="hud" class="glass" aria-label="Scroll altitude and aviation reference">
 <a id="alt-cue" class="alt-cue" href="https://www.ecfr.gov/current/title-14/section-91.119" target="_blank" rel="noopener"><small id="alt-source">FAR 91.119</small><strong id="alt-fact" aria-live="polite">Keep a safe landing option</strong></a>
-<div class="alt-readout"><b id="alt">0</b><span>ft · <span id="sec">Home</span></span></div><span class="alt-note">Quick cue · verify current rules</span>
+<div class="alt-readout"><b id="alt">0</b><span>ft</span></div>
 </div>
 <div id="lb" role="dialog" aria-label="Photo viewer"><img alt=""><button class="lbn" id="lp" aria-label="Previous photo">‹</button><button class="lbn" id="ln" aria-label="Next photo">›</button></div>
 <div id="tool-viewer" class="tool-viewer" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="tool-viewer-title">
@@ -230,10 +230,10 @@ const altitudeFacts=[
 {at:1200,source:'FAR 91.155',text:'Class G · day/night split',detail:'At or below 1,200 feet AGL, airplane VFR minimums are generally 1 SM and clear of clouds by day; 3 SM and 500 below, 1,000 above, 2,000 horizontal at night. Exceptions apply.',url:'https://www.ecfr.gov/current/title-14/section-91.155'},
 {at:1500,source:'FAR 91.303',text:'Acro floor · 1,500′ AGL',detail:'Aerobatic flight is prohibited below 1,500 feet AGL and when flight visibility is less than 3 statute miles; other location limits also apply.',url:'https://www.ecfr.gov/current/title-14/section-91.303'},
 {at:2500,source:'FAR 91.117',text:'Near C/D · 200 KIAS max',detail:'At or below 2,500 feet AGL and within 4 NM of the primary airport of Class C or D airspace: generally no more than 200 KIAS. Exceptions apply.',url:'https://www.ecfr.gov/current/title-14/section-91.117'},
-{at:3000,source:'FAR 91.159',text:'VFR >3k AGL · +500s',detail:'In level VFR cruise more than 3,000 feet above the surface: magnetic course 0°–179° uses odd thousands plus 500; 180°–359° uses even thousands plus 500, unless ATC authorizes otherwise.',url:'https://www.ecfr.gov/current/title-14/section-91.159'},
+{at:3500,source:'VFR · FAR 91.159',text:'Cruise altitude · 3,500′',detail:'3,500 feet MSL is the first listed VFR cruising altitude for magnetic courses 0°–179°. The rule applies in level cruise more than 3,000 feet above the surface; courses 180°–359° use even thousands plus 500.',url:'https://www.ecfr.gov/current/title-14/section-91.159'},
+{at:4000,source:'IFR · FAR 91.179',text:'Cruise altitude · 4,000′',detail:'For IFR level cruise in uncontrolled airspace, 4,000 feet MSL is the first even-thousand altitude above 3,000 for magnetic courses 180°–359°. Controlled airspace uses the ATC-assigned altitude.',url:'https://www.ecfr.gov/current/title-14/section-91.179'},
 {at:5000,source:'FAA HYPOXIA',text:'Night O₂ recommended',detail:'The FAA recommends supplemental oxygen above 5,000 feet at night; night vision can deteriorate at a cabin pressure altitude as low as 5,000 feet.',url:'https://www.faa.gov/air_traffic/publications/atpubs/aim_html/chap8_section_1.html'},
 {at:7000,source:'FAR 91.155',text:'Class E <10k · 3–152',detail:'In Class E below 10,000 feet MSL: 3 SM visibility, 500 feet below, 1,000 feet above, and 2,000 feet horizontal from clouds.',url:'https://www.ecfr.gov/current/title-14/section-91.155'},
-{at:8500,source:'FAR 91.179',text:'IFR · ATC or odd/even',detail:'IFR in controlled airspace uses the ATC-assigned altitude. In uncontrolled level cruise, magnetic course 0°–179° uses odd thousands and 180°–359° uses even thousands.',url:'https://www.ecfr.gov/current/title-14/section-91.179'},
 {at:9500,source:'FAR 91.117',text:'<10k MSL · 250 KIAS max',detail:'Below 10,000 feet MSL, indicated airspeed is generally limited to 250 knots unless otherwise authorized or the minimum safe airspeed is higher.',url:'https://www.ecfr.gov/current/title-14/section-91.117'},
 {at:10000,source:'FAA HYPOXIA',text:'Day O₂ recommended',detail:'For optimum protection, the FAA recommends supplemental oxygen above 10,000 feet during the day.',url:'https://www.faa.gov/air_traffic/publications/atpubs/aim_html/chap8_section_1.html'},
 {at:10500,source:'FAR 91.155',text:'Class E ≥10k · 5–111',detail:'In Class E at or above 10,000 feet MSL: 5 SM visibility, 1,000 feet below, 1,000 feet above, and 1 SM horizontal from clouds.',url:'https://www.ecfr.gov/current/title-14/section-91.155'},
@@ -251,15 +251,15 @@ document.getElementById('prog').style.width=tp*100+'%';
 planes.forEach((q,i)=>{const x=(q.o+p*q.k)*1.7-.3,s=x,vw=q.w*W/100,px=lerp(-vw*1.4,W+vw*.4,s),bank=Math.sin(p*9+i)*q.r,y=q.y/100*H+Math.sin(p*7+i*2)*H*.05;
 q.e.style.width=vw+'px';q.e.style.transform=`translate3d(${q.d>0?px:W-px-vw}px,${y}px,0) rotate(${bank}deg) scaleX(${q.d})`});
 clouds.forEach((c,i)=>c.style.transform=`translate3d(${Math.sin(p*5+i)*80}px,${-(scrollY*(.15+i*.1))%H}px,0)`);
-const altitude=Math.min(ALT_MAX,Math.round(p*ALT_MAX));altEl.textContent=altitude.toLocaleString();updateAltitudeFact(altitude);
+const altitude=Math.min(ALT_MAX,Math.round(p*ALT_MAX/10)*10);altEl.textContent=altitude.toLocaleString();updateAltitudeFact(altitude);
 const tl=document.querySelector('.tl');if(tl){const r=tl.getBoundingClientRect();document.getElementById('tlp').style.height=Math.max(0,Math.min(r.height,H*.6-r.top))+'px'}
 requestAnimationFrame(frame)}requestAnimationFrame(frame);
 const io=new IntersectionObserver(es=>es.forEach(e=>{if(!e.isIntersecting)return;const t=e.target;t.classList.add('in');
 $('[data-n]',t).concat(t.dataset.n?[t]:[]).forEach(el=>{const n=+el.dataset.n,s=el.dataset.s||'',T=1600,t0=performance.now();(function u(t1){const f=Math.min(1,(t1-t0)/T),v=n*(1-Math.pow(1-f,4));el.textContent=(n%1?v.toFixed(1):Math.round(v))+s;if(f<1)requestAnimationFrame(u)})(t0)});
 if(t.classList.contains('bars'))$('.bar').forEach((b,i)=>setTimeout(()=>b.querySelector('i').style.width=(b.dataset.v/290.7*100)+'%',i*150));io.unobserve(t)}),{threshold:.2});
 $('.rv').forEach((e,i)=>{e.style.transitionDelay=(i%3)*.08+'s';io.observe(e)});
-const secs=$('section'),links=$('nav a'),names={hero:'Home',about:'About',log:'Flight log',path:'Experience',tools:'Aviator tools',gallery:'Photos',contact:'Contact'};
-new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){links.forEach(a=>a.classList.toggle('on',a.hash=='#'+e.target.id));document.getElementById('sec').textContent=names[e.target.id]}}),{rootMargin:'-45% 0px -45% 0px'}).observe&&secs.forEach(s=>new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){links.forEach(a=>a.classList.toggle('on',a.hash=='#'+s.id));document.getElementById('sec').textContent=names[s.id]}}),{rootMargin:'-45% 0px -45% 0px'}).observe(s));
+const secs=$('section'),links=$('nav a');
+secs.forEach(s=>new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting)links.forEach(a=>a.classList.toggle('on',a.hash=='#'+s.id))}),{rootMargin:'-45% 0px -45% 0px'}).observe(s));
 const roles=['Certified Flight Instructor','Commercial Pilot','Aeronautics Tutor','B.S. Aeronautics, 4.0 GPA'],rl=document.getElementById('role');let ri=0,ci=0,del=false;
 (function ty(){const w=roles[ri];rl.textContent=w.slice(0,ci);if(!del&&ci==w.length){del=true;return setTimeout(ty,1600)}if(del&&ci==0){del=false;ri=(ri+1)%roles.length}ci+=del?-1:1;setTimeout(ty,del?30:65)})();
 const lb=document.getElementById('lb'),li=lb.querySelector('img');let vis=[],cur=0;
