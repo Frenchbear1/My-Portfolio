@@ -98,8 +98,17 @@ body.tool-open{overflow:hidden}.tool-viewer{position:fixed;inset:0;z-index:100;d
 .lbn{position:fixed;top:50%;translate:0 -50%;width:48px;height:48px;border-radius:50%;border:1px solid var(--line);background:rgba(255,255,255,.14);color:#fff;font-size:26px;cursor:pointer;z-index:2}#lp{left:10px}#ln{right:10px}
 #lb{position:fixed;inset:0;z-index:50;background:rgba(3,8,20,.92);display:none;place-items:center;padding:4vw;cursor:zoom-out}
 #lb.on{display:grid}#lb img{max-width:100%;max-height:88vh;border-radius:18px;animation:up .5s forwards;transform:scale(.9);opacity:0}
-#hud{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:20;padding:12px 18px;font:600 14px/1.4 Figtree,sans-serif;text-align:right;border-radius:18px}
-#hud b{font:800 1.5rem Fraunces,serif;color:var(--gold);display:block}
+#hud{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:20;width:246px;padding:12px 14px;font:600 14px/1.4 Figtree,sans-serif;text-align:right;border-radius:18px;overflow:hidden}
+.alt-cue{display:block;padding:0 0 9px;border-bottom:1px solid var(--line);color:var(--ink);text-align:left;text-decoration:none}
+.alt-cue:hover strong,.alt-cue:focus-visible strong{color:var(--gold)}
+.alt-cue:focus-visible{outline:2px solid var(--gold);outline-offset:4px;border-radius:5px}
+.alt-cue small{display:block;color:var(--gold);font-size:.7rem;line-height:1.1;letter-spacing:.12em;text-transform:uppercase}
+.alt-cue strong{display:block;margin-top:3px;font-size:.82rem;line-height:1.25;transition:color .25s}
+#hud.fact-swap .alt-cue>*{animation:cueIn .38s cubic-bezier(.2,.8,.2,1)}
+.alt-readout{display:flex;align-items:baseline;justify-content:flex-end;gap:5px;padding-top:8px;color:var(--mute)}
+#hud b{font:800 1.5rem Fraunces,serif;color:var(--gold)}
+.alt-note{display:block;margin-top:1px;color:var(--mute);font-size:.7rem;line-height:1.2}
+@keyframes cueIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
 #prog{position:fixed;top:0;left:0;height:4px;width:0;background:linear-gradient(90deg,var(--blue),var(--gold),var(--red));z-index:30}
 .contact{text-align:center;padding:60px 30px}.contact h2{margin-bottom:14px}
 .contact-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;max-width:760px;margin:30px auto 0;text-align:left}
@@ -193,7 +202,10 @@ footer{text-align:center;color:var(--mute);padding:40px 6vw 90px;font-size:14px}
 <div class="btns" style="justify-content:center"><a class="btn p" href="David-LaBarre-Resume.pdf" download>Download Résumé</a><a class="btn" href="mailto:LaBarre2156@gmail.com">Email Me</a><a class="btn" href="#hero">Back to the Top</a></div></div></section>
 </main>
 <footer>© David LaBarre · Built to Fly</footer>
-<div id="hud" class="glass"><b id="alt">0</b>ft · <span id="sec">Home</span></div>
+<div id="hud" class="glass" aria-label="Scroll altitude and aviation quick cue">
+<a id="alt-cue" class="alt-cue" href="https://www.ecfr.gov/current/title-14/section-91.119" target="_blank" rel="noopener"><small id="alt-source">FAR 91.119</small><strong id="alt-fact" aria-live="polite">Keep a safe landing option</strong></a>
+<div class="alt-readout"><b id="alt">0</b><span>ft · <span id="sec">Home</span></span></div><span class="alt-note">Quick cue · verify current rules</span>
+</div>
 <div id="lb" role="dialog" aria-label="Photo viewer"><img alt=""><button class="lbn" id="lp" aria-label="Previous photo">‹</button><button class="lbn" id="ln" aria-label="Next photo">›</button></div>
 <div id="tool-viewer" class="tool-viewer" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="tool-viewer-title">
 <div class="tool-shell">
@@ -210,6 +222,27 @@ function sky(t){let a=stops[0],b=stops[1];for(let i=0;i<stops.length-1;i++)if(t>
 const f=Math.min(1,Math.max(0,(t-a[0])/(b[0]-a[0]))),m=(x,y)=>x.map((v,i)=>Math.round(lerp(v,y[i],f)));
 return`linear-gradient(180deg,rgb(${m(a[2],b[2])}) 0%,rgb(${m(a[1],b[1])}) 100%)`}
 const tx=document.querySelector(".hp>div"),gg=document.querySelector(".gauge"),gi=gg.querySelector("img"),tg=[30,70,70,30,30,30,70,70];
+const ALT_MAX=12500,hud=document.getElementById('hud'),altEl=document.getElementById('alt'),altCue=document.getElementById('alt-cue'),altSource=document.getElementById('alt-source'),altFact=document.getElementById('alt-fact');
+const altitudeFacts=[
+{at:0,source:'FAR 91.119',text:'Keep a safe landing option',detail:'Fly high enough to make an emergency landing without undue hazard if power fails.',url:'https://www.ecfr.gov/current/title-14/section-91.119'},
+{at:500,source:'FAR 91.119',text:'Noncongested · 500′ AGL',detail:'Except for takeoff or landing: generally at least 500 feet above the surface in noncongested areas; special separation language applies over open water or sparsely populated areas.',url:'https://www.ecfr.gov/current/title-14/section-91.119'},
+{at:1000,source:'FAR 91.119',text:'Congested · +1,000′',detail:'Except for takeoff or landing: 1,000 feet above the highest obstacle within 2,000 feet horizontally over congested areas or open-air assemblies.',url:'https://www.ecfr.gov/current/title-14/section-91.119'},
+{at:1200,source:'FAR 91.155',text:'Class G · day/night split',detail:'At or below 1,200 feet AGL, airplane VFR minimums are generally 1 SM and clear of clouds by day; 3 SM and 500 below, 1,000 above, 2,000 horizontal at night. Exceptions apply.',url:'https://www.ecfr.gov/current/title-14/section-91.155'},
+{at:1500,source:'FAR 91.303',text:'Acro floor · 1,500′ AGL',detail:'Aerobatic flight is prohibited below 1,500 feet AGL and when flight visibility is less than 3 statute miles; other location limits also apply.',url:'https://www.ecfr.gov/current/title-14/section-91.303'},
+{at:2500,source:'FAR 91.117',text:'Near C/D · 200 KIAS max',detail:'At or below 2,500 feet AGL and within 4 NM of the primary airport of Class C or D airspace: generally no more than 200 KIAS. Exceptions apply.',url:'https://www.ecfr.gov/current/title-14/section-91.117'},
+{at:3000,source:'FAR 91.159',text:'VFR >3k AGL · +500s',detail:'In level VFR cruise more than 3,000 feet above the surface: magnetic course 0°–179° uses odd thousands plus 500; 180°–359° uses even thousands plus 500, unless ATC authorizes otherwise.',url:'https://www.ecfr.gov/current/title-14/section-91.159'},
+{at:5000,source:'FAA HYPOXIA',text:'Night O₂ recommended',detail:'The FAA recommends supplemental oxygen above 5,000 feet at night; night vision can deteriorate at a cabin pressure altitude as low as 5,000 feet.',url:'https://www.faa.gov/air_traffic/publications/atpubs/aim_html/chap8_section_1.html'},
+{at:7000,source:'FAR 91.155',text:'Class E <10k · 3–152',detail:'In Class E below 10,000 feet MSL: 3 SM visibility, 500 feet below, 1,000 feet above, and 2,000 feet horizontal from clouds.',url:'https://www.ecfr.gov/current/title-14/section-91.155'},
+{at:8500,source:'FAR 91.179',text:'IFR · ATC or odd/even',detail:'IFR in controlled airspace uses the ATC-assigned altitude. In uncontrolled level cruise, magnetic course 0°–179° uses odd thousands and 180°–359° uses even thousands.',url:'https://www.ecfr.gov/current/title-14/section-91.179'},
+{at:9500,source:'FAR 91.117',text:'<10k MSL · 250 KIAS max',detail:'Below 10,000 feet MSL, indicated airspeed is generally limited to 250 knots unless otherwise authorized or the minimum safe airspeed is higher.',url:'https://www.ecfr.gov/current/title-14/section-91.117'},
+{at:10000,source:'FAA HYPOXIA',text:'Day O₂ recommended',detail:'For optimum protection, the FAA recommends supplemental oxygen above 10,000 feet during the day.',url:'https://www.faa.gov/air_traffic/publications/atpubs/aim_html/chap8_section_1.html'},
+{at:10500,source:'FAR 91.155',text:'Class E ≥10k · 5–111',detail:'In Class E at or above 10,000 feet MSL: 5 SM visibility, 1,000 feet below, 1,000 feet above, and 1 SM horizontal from clouds.',url:'https://www.ecfr.gov/current/title-14/section-91.155'},
+{at:11000,source:'FAR 91.215 / .225',text:'Mode C + ADS-B area*',detail:'At and above 10,000 feet MSL in the contiguous U.S. and DC, Mode C and ADS-B Out rules generally apply; airspace at and below 2,500 feet AGL and some aircraft are excepted.',url:'https://www.ecfr.gov/current/title-14/section-91.225'},
+{at:12000,source:'FAA HYPOXIA',text:'Hypoxia effects rise',detail:'From about 12,000 to 15,000 feet cabin pressure altitude, judgment, memory, alertness, coordination, and calculation ability can be impaired.',url:'https://www.faa.gov/air_traffic/publications/atpubs/aim_html/chap8_section_1.html'},
+{at:12500,source:'FAR 91.211',text:'>12.5k · O₂ after 30 min',detail:'Above 12,500 through 14,000 feet cabin pressure altitude, required minimum flight crew must use supplemental oxygen for the portion exceeding 30 minutes.',url:'https://www.ecfr.gov/current/title-14/section-91.211'}
+];
+let altitudeFactIndex=-1;
+function updateAltitudeFact(altitude){let next=0;for(let i=1;i<altitudeFacts.length;i++){if(altitude>=altitudeFacts[i].at)next=i;else break}if(next===altitudeFactIndex)return;altitudeFactIndex=next;const fact=altitudeFacts[next];altSource.textContent=fact.source;altFact.textContent=fact.text;altCue.href=fact.url;altCue.title=fact.detail;altCue.setAttribute('aria-label',`${fact.source}: ${fact.text}. ${fact.detail} Opens the official source in a new tab.`);hud.classList.remove('fact-swap');void hud.offsetWidth;hud.classList.add('fact-swap')}
 function frame(now){const sh=scrollY/H,e=(u=>u*u*(3-2*u))(Math.min(1,Math.max(0,(sh-.4)/.35))),v=tg.map((t,i)=>lerp(50,t,e)+Math.sin(now/1300+i*1.7)*(4+e*10));tx.style.opacity=1-e;tx.style.transform=`translateY(${-e*50}px)`;
 gg.style.borderRadius=v.slice(0,4).map(x=>x+"%").join(" ")+" / "+v.slice(4).map(x=>x+"%").join(" ");gg.style.opacity=1-e;gg.style.transform=`translateY(${-e*80}px) scale(${1-e*.25}) rotate(${e*-6}deg)`;gg.style.filter=`blur(${e*10}px)`;gi.style.transform=`scale(${1.12+e*.35})`;
 const max=document.documentElement.scrollHeight-H;tp=max>0?scrollY/max:0;sp=lerp(sp,tp,.08);p=sp;
@@ -218,7 +251,7 @@ document.getElementById('prog').style.width=tp*100+'%';
 planes.forEach((q,i)=>{const x=(q.o+p*q.k)*1.7-.3,s=x,vw=q.w*W/100,px=lerp(-vw*1.4,W+vw*.4,s),bank=Math.sin(p*9+i)*q.r,y=q.y/100*H+Math.sin(p*7+i*2)*H*.05;
 q.e.style.width=vw+'px';q.e.style.transform=`translate3d(${q.d>0?px:W-px-vw}px,${y}px,0) rotate(${bank}deg) scaleX(${q.d})`});
 clouds.forEach((c,i)=>c.style.transform=`translate3d(${Math.sin(p*5+i)*80}px,${-(scrollY*(.15+i*.1))%H}px,0)`);
-document.getElementById('alt').textContent=Math.round(p*35000).toLocaleString();
+const altitude=Math.min(ALT_MAX,Math.round(p*ALT_MAX));altEl.textContent=altitude.toLocaleString();updateAltitudeFact(altitude);
 const tl=document.querySelector('.tl');if(tl){const r=tl.getBoundingClientRect();document.getElementById('tlp').style.height=Math.max(0,Math.min(r.height,H*.6-r.top))+'px'}
 requestAnimationFrame(frame)}requestAnimationFrame(frame);
 const io=new IntersectionObserver(es=>es.forEach(e=>{if(!e.isIntersecting)return;const t=e.target;t.classList.add('in');

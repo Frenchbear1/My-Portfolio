@@ -12,6 +12,9 @@ The Aviator Lab section launches David's seven interactive aviation tools in
 an animated full-screen viewer without leaving the portfolio. Every tool also
 includes an "Open in new tab" fallback.
 
+On wider screens, the scrolling altitude display tops out at 12,500 feet and
+surfaces compact, altitude-aware FAA and Part 91 quick-reference cues.
+
 ## Deploy with GitHub Pages (free)
 
 1. **Create a repo.** On github.com, click "New repository." Name it anything
