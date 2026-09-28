@@ -8,6 +8,10 @@ Live site: https://frenchbear1.github.io/david-labarre-site/
 The attached résumé is available from the site's download links as
 `David-LaBarre-Resume.pdf`.
 
+The Aviator Lab section launches David's seven interactive aviation tools in
+an animated full-screen viewer without leaving the portfolio. Every tool also
+includes an "Open in new tab" fallback.
+
 ## Deploy with GitHub Pages (free)
 
 1. **Create a repo.** On github.com, click "New repository." Name it anything
