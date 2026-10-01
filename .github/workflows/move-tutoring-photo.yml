@@ -1,0 +1,54 @@
+name: Add tutoring gallery filter
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/move-tutoring-photo.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Move photo to Tutoring
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"Expected one {label} match, found {count}")
+              return text.replace(old, new, 1)
+
+          path = Path("index.html")
+          html = path.read_text()
+
+          old_filters = '<button class="btn" data-f="campus">Campus</button></div><div class="gal">'
+          new_filters = '<button class="btn" data-f="campus">Campus</button><button class="btn" data-f="tutoring">Tutoring</button></div><div class="gal">'
+          html = replace_once(html, old_filters, new_filters, "gallery filters")
+
+          old_photo = 'data-cat="campus" style="aspect-ratio:731/1000" aria-label="Open campus photo"'
+          new_photo = 'data-cat="tutoring" style="aspect-ratio:731/1000" aria-label="Open tutoring photo"'
+          html = replace_once(html, old_photo, new_photo, "tutoring photo")
+
+          start = html.index(new_photo)
+          end = html.index('</button>', start)
+          photo = replace_once(html[start:end], 'alt="campus photo"', 'alt="Tutoring group photo"', "photo description")
+          html = html[:start] + photo + html[end:]
+          path.write_text(html)
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/move-tutoring-photo.yml
+          git add index.html
+          git commit -m "Add tutoring gallery filter"
+          git push origin main
