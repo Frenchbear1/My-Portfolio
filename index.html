@@ -13,6 +13,7 @@
 <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png">
 <link rel="mask-icon" href="assets/icons/safari-pinned-tab.svg" color="#0b1a3a">
 <link rel="manifest" href="site.webmanifest">
+<link rel="stylesheet" href="assets/aircraft.css?v=20261001">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,800&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -37,10 +38,6 @@ h1,h2,h3{font-family:Fraunces,Georgia,serif;line-height:1.05;letter-spacing:-.02
 #stars{z-index:0;opacity:0;will-change:opacity;background-image:radial-gradient(1.5px 1.5px at 10% 20%,#fff,transparent),radial-gradient(1px 1px at 30% 70%,#fff,transparent),radial-gradient(1.5px 1.5px at 55% 15%,#fff,transparent),radial-gradient(1px 1px at 75% 55%,#fff,transparent),radial-gradient(2px 2px at 90% 25%,#fff,transparent),radial-gradient(1px 1px at 20% 90%,#fff,transparent),radial-gradient(1px 1px at 65% 85%,#fff,transparent);background-size:420px 420px}
 #fx{overflow:hidden;z-index:1}
 .cloud{position:absolute;pointer-events:none;width:46vw;height:16vw;border-radius:50%;background:radial-gradient(closest-side,rgba(255,255,255,.5),transparent);filter:blur(18px);will-change:transform}
-.plane{position:absolute;left:0;top:0;pointer-events:none;visibility:hidden;will-change:transform}
-#fx.ready .plane{visibility:visible}
-.plane svg{display:block;width:100%;height:auto;fill:#fff;filter:drop-shadow(0 20px 30px rgba(0,0,0,.35))}
-.plane i{position:absolute;right:88%;top:47%;height:3px;width:60%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.7));border-radius:3px}
 main,header,footer{position:relative;z-index:3}
 .cloud{width:min(46vw,600px)}
 section{min-height:100vh;padding:14vh 6vw;max-width:1200px;margin:auto}
@@ -144,12 +141,8 @@ footer{text-align:center;color:var(--mute);padding:40px 6vw 90px;font-size:14px}
 @media print{.plane,.cloud,#sky,#stars,nav,#hud,#prog{display:none}body{background:#fff;color:#000}.glass{background:#fff;border-color:#999}}
 </style></head><body>
 <div id="prog"></div><div id="sky" aria-hidden="true"><span class="sky-0"></span><span class="sky-1"></span><span class="sky-2"></span><span class="sky-3"></span></div><div id="stars"></div>
-<div id="fx"><div class="cloud" style="left:-10vw;top:12vh"></div><div class="cloud" style="left:60vw;top:55vh;width:60vw"></div><div class="cloud" style="left:20vw;top:80vh"></div>
-<svg width="0" height="0" style="position:absolute"><symbol id="pl" viewBox="0 0 200 100"><g transform="translate(200 0) scale(-1 1)"><path d="M8 50 L20 45 L72 44 L112 6 L128 6 L110 46 L164 47 L176 30 L190 30 L184 50 L190 70 L176 70 L164 53 L110 54 L128 94 L112 94 L72 56 L20 55Z"/><rect x="2" y="38" width="4" height="24" rx="2" opacity=".6"/></g></symbol></svg>
-<div class="plane" data-k="1.1" data-o=".1" data-y="18" data-w="34" data-r="4" data-d="1"><i></i><svg><use href="#pl"/></svg></div>
-<div class="plane" data-k="1.5" data-o="-.2" data-y="62" data-w="58" data-r="-6" data-d="-1" style="opacity:.55"><i></i><svg><use href="#pl"/></svg></div>
-<div class="plane" data-k="2.3" data-o="-.9" data-y="38" data-w="22" data-r="8" data-d="1" style="opacity:.8"><i></i><svg><use href="#pl"/></svg></div>
-<div class="plane" data-k="1.0" data-o="-.4" data-y="78" data-w="80" data-r="-3" data-d="1" style="opacity:.25"><i></i><svg><use href="#pl"/></svg></div>
+<div id="fx" aria-hidden="true"><div class="cloud" style="left:-10vw;top:12vh"></div><div class="cloud" style="left:60vw;top:55vh;width:60vw"></div><div class="cloud" style="left:20vw;top:80vh"></div>
+<div id="aircraft-fleet" aria-hidden="true"><div class="plane"></div><div class="plane"></div></div>
 
 </div><nav class="glass"><a href="#about">About</a><a href="#log">Log</a><a href="#path">Career</a><a href="#tools">Tools</a><a href="#gallery">Photos</a><a href="#contact">Contact</a></nav>
 <main>
@@ -229,11 +222,11 @@ footer{text-align:center;color:var(--mute);padding:40px 6vw 90px;font-size:14px}
 <div class="tool-bar"><div><small id="tool-viewer-type">Aviator tool</small><h2 id="tool-viewer-title">Interactive tool</h2></div><div class="tool-actions"><a id="tool-external" href="#" target="_blank" rel="noopener" aria-label="Open tool in a new tab"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7M21 3 10 14M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg><span>Open in new tab</span></a><button class="tool-close" id="tool-close" type="button">Close <span aria-hidden="true">×</span></button></div></div>
 <div class="tool-stage" id="tool-stage"><div class="tool-loader" aria-live="polite"><div><i aria-hidden="true"></i><b>Loading tool…</b><span>You’ll stay inside the portfolio.</span></div></div><iframe id="tool-frame" src="about:blank" title="Interactive aviation tool" allow="fullscreen; clipboard-write" referrerpolicy="strict-origin-when-cross-origin"></iframe></div>
 </div></div>
+<script src="assets/aircraft.js?v=20261001"></script>
 <script>
 const $=(s,c=document)=>[...c.querySelectorAll(s)],lerp=(a,b,t)=>a+(b-a)*t;
 const stops=[0,.3,.6,1];
 let p=0,sp=0,W=innerWidth,H=innerHeight,tp=0;
-const planes=$('.plane').map(e=>({e,k:+e.dataset.k,o:+e.dataset.o,y:+e.dataset.y,w:+e.dataset.w,r:+e.dataset.r,d:+e.dataset.d}));
 const clouds=$('.cloud'),skyLayers=$('#sky span');
 function paintSky(t){let s=0;while(s<stops.length-2&&t>stops[s+1])s++;const f=Math.min(1,Math.max(0,(t-stops[s])/(stops[s+1]-stops[s])));skyLayers.forEach((layer,i)=>layer.style.opacity=i===s?'1':i===s+1?f:'0')}
 const tx=document.querySelector(".hp>div"),gg=document.querySelector(".gauge"),gi=gg.querySelector("img"),tg=[30,70,70,30,30,30,70,70];
@@ -263,9 +256,7 @@ gg.style.borderRadius=v.slice(0,4).map(x=>x+"%").join(" ")+" / "+v.slice(4).map(
 const max=document.documentElement.scrollHeight-H;tp=max>0?scrollY/max:0;sp=lerp(sp,tp,.08);p=sp;
 paintSky(p);document.getElementById('stars').style.opacity=Math.max(0,(p-.75)*4);
 document.getElementById('prog').style.width=tp*100+'%';
-planes.forEach((q,i)=>{const x=(q.o+p*q.k)*1.7-.3,s=x,vw=q.w*W/100,px=lerp(-vw*1.4,W+vw*.4,s),bank=Math.sin(p*9+i)*q.r,y=q.y/100*H+Math.sin(p*7+i*2)*H*.05;
-q.e.style.width=vw+'px';q.e.style.transform=`translate3d(${q.d>0?px:W-px-vw}px,${y}px,0) rotate(${bank}deg) scaleX(${q.d})`});
-document.getElementById('fx').classList.add('ready');
+window.portfolioAircraft?.update(now,scrollY,W,H);
 clouds.forEach((c,i)=>c.style.transform=`translate3d(${Math.sin(p*5+i)*80}px,${Math.sin(p*Math.PI*2+i*1.8)*H*.12}px,0)`);
 const altitude=Math.min(ALT_MAX,Math.round(p*ALT_MAX/10)*10);altEl.textContent=altitude.toLocaleString();updateAltitudeFact(altitude);
 const tl=document.querySelector('.tl');if(tl){const r=tl.getBoundingClientRect();document.getElementById('tlp').style.height=Math.max(0,Math.min(r.height,H*.6-r.top))+'px'}
