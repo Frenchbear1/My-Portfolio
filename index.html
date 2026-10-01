@@ -7,10 +7,21 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="David LaBarre">
 <title>David LaBarre · Pilot &amp; Flight Instructor</title>
-<script>if('scrollRestoration'in history)history.scrollRestoration='manual';const resetPageScroll=()=>{const r=document.documentElement,p=r.style.scrollBehavior;r.style.scrollBehavior='auto';scrollTo(0,0);requestAnimationFrame(()=>r.style.scrollBehavior=p)};resetPageScroll();addEventListener('pageshow',resetPageScroll)</script>
-<link rel="icon" type="image/svg+xml" href="assets/icons/icon.svg">
-<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
-<link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png">
+<script>
+if('scrollRestoration'in history)history.scrollRestoration='manual';
+const pageWasReloaded=(()=>{const n=performance.getEntriesByType?.('navigation')?.[0];return n?n.type==='reload':performance.navigation?.type===1})();
+const resetPageScroll=()=>{const r=document.documentElement,p=r.style.scrollBehavior;r.style.scrollBehavior='auto';scrollTo({top:0,left:0,behavior:'auto'});requestAnimationFrame(()=>r.style.scrollBehavior=p)};
+if(pageWasReloaded){
+  if(location.hash)history.replaceState(null,'',location.pathname+location.search);
+  resetPageScroll();
+  addEventListener('DOMContentLoaded',resetPageScroll,{once:true});
+  addEventListener('load',()=>{resetPageScroll();requestAnimationFrame(resetPageScroll)},{once:true});
+}
+addEventListener('pageshow',e=>{if(pageWasReloaded||e.persisted)resetPageScroll()});
+</script>
+<link rel="icon" type="image/svg+xml" href="assets/icons/icon-full.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-browser-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon-full.png">
 <link rel="mask-icon" href="assets/icons/safari-pinned-tab.svg" color="#0b1a3a">
 <link rel="manifest" href="site.webmanifest">
 <link rel="stylesheet" href="assets/aircraft.css?v=20261001">
@@ -156,8 +167,8 @@ footer{text-align:center;color:var(--mute);padding:40px 6vw 90px;font-size:14px}
 
 <section id="about"><h2 class="rv">Why Aviation</h2>
 <div class="about">
-<div class="glass rv"><h3 style="margin-bottom:12px">Mindset</h3><p>To operate with the mindset, discipline, and skill required for excellence in aviation, backed by a 4.0 GPA and a perfect 100% on the FAA Commercial Knowledge Exam. That means preparing thoroughly, communicating clearly, and holding the same high standard on the ground and in the air.</p></div>
-<div class="glass rv"><h3 style="margin-bottom:12px">Teaching</h3><p>As an aeronautics tutor I explain complex ACS knowledge concepts using real-world examples and analogies, and I adapt to how each student learns so everyone understands the material.</p><p>Teamwork and leadership grew through the National Intercollegiate Flying Association, a safe but competitive environment.</p></div></div>
+<div class="glass rv"><h3 style="margin-bottom:12px">Mindset</h3><p>My aeronautics studies and FAA commercial knowledge preparation gave me a strong foundation, but aviation keeps me learning. I aim to bring disciplined preparation, clear communication, and steady judgment to every flight.</p></div>
+<div class="glass rv"><h3 style="margin-bottom:12px">Teaching</h3><p>As an aeronautics tutor, I worked with students on ACS knowledge areas using practical examples and adapting explanations to the way each student learned best.</p><p>NIFA also gave me experience working with others in a safety-focused, competitive environment.</p></div></div>
 </section>
 
 <section id="log"><h2 class="rv">Flight Log &amp; Ratings</h2>

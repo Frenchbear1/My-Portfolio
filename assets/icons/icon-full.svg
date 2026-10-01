@@ -19,7 +19,7 @@
       <feDropShadow dx="0" dy="16" stdDeviation="12" flood-color="#020916" flood-opacity=".45"/>
     </filter>
   </defs>
-  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect width="512" height="512" fill="url(#bg)"/>
   <circle cx="256" cy="256" r="177" fill="none" stroke="#FFFFFF" stroke-opacity=".10" stroke-width="3"/>
   <path d="M76 301C149 253 229 236 318 246c47 5 86 18 118 39" fill="none" stroke="url(#sky)" stroke-width="15" stroke-linecap="round" opacity=".85"/>
   <path d="M78 328c103-51 231-59 356-10" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" opacity=".15"/>
