@@ -39,33 +39,55 @@
     return n;
   };
 
+  // Turn projected control points into one continuous SVG curve. The previous
+  // models were assembled from dozens of flat polygons; their seams became
+  // especially obvious at mobile sizes. Catmull-Rom-to-Bezier conversion keeps
+  // the aircraft code-native while giving the airframe a genuinely smooth skin.
+  const curveData=(points,closed=true,tension=.64)=>{
+    const pts=points.map(project),n=pts.length;
+    if(n<2)return '';
+    const get=i=>closed?pts[(i+n)%n]:pts[Math.max(0,Math.min(n-1,i))];
+    let d=`M ${pts[0][0].toFixed(2)} ${pts[0][1].toFixed(2)}`;
+    const end=closed?n:n-1;
+    for(let i=0;i<end;i++){
+      const p0=get(i-1),p1=get(i),p2=get(i+1),p3=get(i+2);
+      const c1=[p1[0]+(p2[0]-p0[0])*tension/6,p1[1]+(p2[1]-p0[1])*tension/6];
+      const c2=[p2[0]-(p3[0]-p1[0])*tension/6,p2[1]-(p3[1]-p1[1])*tension/6];
+      d+=` C ${c1[0].toFixed(2)} ${c1[1].toFixed(2)} ${c2[0].toFixed(2)} ${c2[1].toFixed(2)} ${p2[0].toFixed(2)} ${p2[1].toFixed(2)}`;
+    }
+    return d+(closed?' Z':'');
+  };
+
   function aircraft(m) {
     const svg=el('svg',{viewBox:'0 0 520 380', 'aria-hidden':'true', focusable:'false'});
     const pieces=[];
     const add=(node,pts,offset=0)=>pieces.push({node,d:pts.reduce((s,p)=>s+depth(p),0)/pts.length+offset});
     const poly=(pts,fill,offset=0,stroke=fill,width=.45)=>add(el('polygon',{points:pts.map(point).join(' '),fill,stroke,'stroke-width':width,'stroke-linejoin':'round'}),pts,offset);
+    const curve=(pts,fill,offset=0,stroke=fill,width=.45,tension=.64)=>add(el('path',{d:curveData(pts,true,tension),fill,stroke,'stroke-width':width,'stroke-linejoin':'round'}),pts,offset);
     const line=(pts,color='#718394',width=.7,offset=.025)=>add(el('polyline',{points:pts.map(point).join(' '),fill:'none',stroke:color,'stroke-width':width,'stroke-linecap':'round','stroke-linejoin':'round'}),pts,offset);
     const dot=(p,r,fill,offset=.03)=>{const [cx,cy]=project(p);add(el('circle',{cx,cy,r,fill}),[p],offset)};
     // Keep glazing painted on its parent panel when depth-sorting the aircraft.
     const panel=(pts,fill,details)=>{
       const start=pieces.length;
-      poly(pts,fill);
+      curve(pts,fill,0,fill,.45,.28);
       details();
       const group=el('g');
       pieces.splice(start).forEach(piece=>group.append(piece.node));
       add(group,pts,.025);
     };
 
-    // Smooth elliptical fuselage sections; upper and lower paint remain separate.
-    const tube=(rings,color,paint,origin=[0,0,0],segments=20)=>{
+    // A three-surface elliptical tube: one uninterrupted silhouette plus soft
+    // highlight/shadow bands. This avoids the segmented "low-poly" fuselage.
+    const tube=(rings,color,paint,origin=[0,0,0])=>{
       const ringPoint=(r,a)=>[r[0]+origin[0],Math.cos(a)*r[1]+origin[1],Math.sin(a)*r[2]+r[3]+origin[2]];
-      for(let i=0;i<rings.length-1;i++)for(let j=0;j<segments;j++){
-        const a=j/segments*Math.PI*2,b=(j+1)/segments*Math.PI*2;
-        const normal=(a+b)/2;
-        const light=Math.sin(normal)*.13-Math.cos(normal)*.12-.04;
-        const base=paint&&Math.sin(normal)<-.23?paint:color;
-        poly([ringPoint(rings[i],a),ringPoint(rings[i+1],a),ringPoint(rings[i+1],b),ringPoint(rings[i],b)],shade(base,light));
-      }
+      const top=rings.map(r=>ringPoint(r,2.10));
+      const side=rings.map(r=>ringPoint(r,.08));
+      const lower=rings.map(r=>ringPoint(r,-1.10));
+      const skin=[...top,...lower.slice().reverse()];
+      curve(skin,shade(color,.015),0,shade(color,-.16),.52,.58);
+      curve([...side,...lower.slice().reverse()],shade(paint||color,paint?-.08:-.18),.012,shade(paint||color,-.26),.34,.54);
+      curve([...top,...side.slice().reverse()],shade(color,.105),.016,shade(color,.02),.26,.54);
+      line(side,shade(paint||color,paint?-.02:-.12),.52,.023);
     };
     const tailX=m.body[0][0]+.52;
 
@@ -95,23 +117,26 @@
       const span=m.span/2,z=m.wingZ,dihedral=m.high?.035:.065;
       const sections=[{y:.28,lead:.90,chord:m.root},{y:span*.50,lead:.90,chord:m.root},{y:span-.16,lead:.90-m.sweep,chord:m.tip},{y:span,lead:.76-m.sweep,chord:m.tip-.18}];
       const at=(s,f,up=0)=>[s.lead-s.chord*f,s.y*side,z+s.y*dihedral+up];
-      for(let i=0;i<sections.length-1;i++){
-        const a=sections[i],b=sections[i+1];
-        const strips=[0,.08,.28,.73,1];
-        for(let j=0;j<strips.length-1;j++){
-          const p=strips[j],q=strips[j+1];
-          let color=m.color;
-          if(m.extra&&(j===0||j===2))color=m.trim;
-          if(m.cessna&&i===2)color=m.trim;
-          if(m.twin&&i===2)color=m.trim;
-          const z1=Math.sin(p*Math.PI)*.075,z2=Math.sin(q*Math.PI)*.075;
-          poly([at(a,p,z1),at(b,p,z1),at(b,q,z2),at(a,q,z2)],shade(color,[.05,.12,-.01,-.15][j]));
-        }
-        poly([at(a,1),at(b,1),at(b,1,-.045),at(a,1,-.08)],shade(m.color,-.31));
-      }
+      const topAt=(s,f)=>at(s,f,Math.sin(f*Math.PI)*.07);
+      const outline=[...sections.map(s=>topAt(s,0)),...sections.slice().reverse().map(s=>topAt(s,1))];
+      curve(outline,shade(m.color,.07),-.015,shade(m.color,-.16),.5,.33);
+
+      // A single soft chordwise shade describes the airfoil without breaking it
+      // into strips. The narrow trailing face gives the wing enough thickness.
+      const shoulder=[...sections.map(s=>topAt(s,.34)),...sections.slice().reverse().map(s=>topAt(s,.78))];
+      curve(shoulder,shade(m.color,.015),.005,shade(m.color,-.04),.18,.30);
+      const trailing=[...sections.map(s=>at(s,1,-.015)),...sections.slice().reverse().map(s=>at(s,1,-.085))];
+      curve(trailing,shade(m.color,-.28),-.01,shade(m.color,-.34),.32,.28);
+
+      const paintBand=(from,to,color,outer=sections)=>{
+        const pts=[...outer.map(s=>topAt(s,from)),...outer.slice().reverse().map(s=>topAt(s,to))];
+        curve(pts,color,.018,color,.18,.24);
+      };
+      if(m.extra){paintBand(.02,.12,m.trim);paintBand(.48,.60,m.trim)}
+      if(m.cessna||m.twin)paintBand(.03,.96,m.trim,sections.slice(2));
       const a=sections[0],b=sections[1],c=sections[2];
-      line([at(a,.76,.02),at(b,.76,.04),at(c,.76,.02)],shade(m.color,-.30),.75);
-      line([at(b,.76,.04),at(b,1,.01)],shade(m.color,-.30),.65);
+      line([topAt(a,.76),topAt(b,.76),topAt(c,.76),topAt(sections[3],.78)],shade(m.color,-.30),.72);
+      line([topAt(b,.76),topAt(b,1)],shade(m.color,-.30),.62);
       if(m.cub)for(let y=.60;y<span-.18;y+=.39){const s={y,lead:.90,chord:m.root};line([at(s,.13,.06),at(s,.75,.045)],'#dca52b',.5)}
       else{dot([.38,side*1.65,z+1.65*dihedral+.07],2.1,'#b8c3c7');line([[.90,side*1.8,z+1.8*dihedral],[.90-m.root,side*1.8,z+1.8*dihedral]],'#acb9c3',.45)}
       dot([.60-m.sweep,side*(span-.04),z+span*dihedral],1.7,side>0?'#ca4c4d':'#49a787');
@@ -127,7 +152,7 @@
     const tailSpan=m.twin?2.0:m.cub?1.40:1.60;
     [-1,1].forEach(side=>{
       const pts=[[tailX+.47,.02*side,tailZ],[tailX+.10,tailSpan*.87*side,tailZ+.07],[tailX-.23,tailSpan*side,tailZ+.065],[tailX-.68,tailSpan*.9*side,tailZ+.045],[tailX-.75,.02*side,tailZ]];
-      poly(pts,m.twin?m.trim:shade(m.color,.04));
+      curve(pts,m.twin?m.trim:shade(m.color,.04),0,shade(m.color,-.18),.42,m.cub?.62:.26);
       line([[tailX-.35,.14*side,tailZ+.02],[tailX-.49,tailSpan*.88*side,tailZ+.06]],shade(m.color,-.33),.7);
     });
 
@@ -147,7 +172,7 @@
     if(m.cub)fin=[[tailX+.42,0,.13],[tailX+.36,0,.82],[tailX+.13,0,1.19],[tailX-.19,0,1.28],[tailX-.46,0,1.10],[tailX-.66,0,.62],[tailX-.76,0,.08]];
     else if(m.ttail)fin=[[tailX+1.0,0,.13],[tailX+.48,0,.42],[tailX+.10,0,tailZ],[tailX-.65,0,tailZ+.03],[tailX-.77,0,.12]];
     else fin=[[tailX+.93,0,.15],[tailX+.53,0,.39],[tailX-.08,0,m.extra?1.51:1.56],[tailX-.71,0,m.extra?1.50:1.54],[tailX-.76,0,.13]];
-    poly(fin,m.extra?m.trim:m.color,.01);
+    curve(fin,m.extra?m.trim:m.color,.01,shade(m.color,-.22),.44,m.cub?.60:.22);
     if(m.cessna||m.twin){const top=fin.slice(2,4);poly([top[0],top[1],[top[1][0]+.01,0,top[1][2]-.20],[top[0][0]+.08,0,top[0][2]-.20]],m.trim,.025)}
     line([[tailX-.47,0,.20],[tailX-.40,0,m.cub?1.13:m.ttail?tailZ:1.47]],shade(m.color,-.35),.8,.04);
     if(m.red)line([[tailX+.20,.015,1.04],[tailX-.59,.015,.92]],m.red,1.6,.04);
@@ -156,35 +181,32 @@
     if(m.bubble){
       // Glazed, rounded canopies: side-by-side Diamond / tandem Extra.
       const rings=m.extra?[[-1.55,.03,.02,.30],[-1.24,.30,.45,.30],[-.62,.37,.69,.30],[.22,.38,.72,.30],[1.02,.32,.47,.30],[1.46,.06,.02,.30]]:[[-1.0,.04,.02,.36],[-.63,.42,.55,.36],[.08,.53,.77,.36],[.94,.46,.68,.31],[1.55,.26,.35,.27],[1.85,.025,.015,.25]];
-      for(let i=0;i<rings.length-1;i++)for(let j=0;j<10;j++){
-        const a=j/10*Math.PI,b=(j+1)/10*Math.PI;
-        const at=(r,t)=>[r[0],Math.cos(t)*r[1],r[3]+Math.sin(t)*r[2]];
-        poly([at(rings[i],a),at(rings[i+1],a),at(rings[i+1],b),at(rings[i],b)],shade('#477184',Math.sin((a+b)/2)*.30-Math.cos((a+b)/2)*.24),.015);
-      }
+      tube(rings,'#527f91','#284d62',[0,0,0]);
       const r=rings[m.extra?2:3];
       line(Array.from({length:15},(_,i)=>{const a=i/14*Math.PI;return[r[0],Math.cos(a)*r[1],r[3]+Math.sin(a)*r[2]+.01]}),m.color,1.4,.04);
       line(m.extra?[[-1.17,.22,.62],[-.60,.26,.90],[.17,.23,.94]]:[[-.51,.23,.87],[.06,.23,1.07],[.71,.24,.92]],'#c4e4ea',1.8,.05);
     } else {
-      // Cabin roof, separate side windows, and a sloping front windshield.
+      // One rounded cabin shell bridges the aft fuselage into the roof. Keeping
+      // this continuous fixes the angular notch that used to sit behind row two.
       const back=m.cub?-1.05:m.cessna?-1.30:-1.10;
       const front=m.cub?1.14:1.05,roof=m.cub?.94:.90,w=m.cub?.37:.49;
-      poly([[back,-w,.35],[back+.35,-w*.83,roof],[front,-w*.83,roof],[front+.65,-w,.30]],shade(m.color,-.11));
-      poly([[back+.35,-w*.83,roof],[front,-w*.83,roof],[front,w*.83,roof],[back+.35,w*.83,roof]],shade(m.color,.13));
+      curve([[back-.08,-w,.34],[back+.16,-w*.91,.70],[back+.38,-w*.83,roof],[front,-w*.83,roof],[front+.30,-w*.91,.66],[front+.65,-w,.30]],shade(m.color,-.08),.008,shade(m.color,-.20),.38,.42);
+      curve([[back+.31,-w*.83,roof],[front,-w*.83,roof],[front,w*.83,roof],[back+.31,w*.83,roof]],shade(m.color,.13),.018,shade(m.color,-.06),.30,.28);
       const glass='#294b60';
       const y=w+.008;
-      panel([[back,w,.35],[back+.35,w*.83,roof],[front,w*.83,roof],[front+.65,w,.30]],shade(m.color,-.06),()=>{
-        poly([[back+.16,y,.40],[back+.42,y*.85,roof-.09],[-.12,y*.85,roof-.09],[-.12,y,.40]],glass);
-        poly([[.01,y,.40],[.01,y*.85,roof-.09],[front-.07,y*.85,roof-.09],[front+.42,y,.40]],glass);
+      panel([[back-.08,w,.34],[back+.16,w*.91,.70],[back+.38,w*.83,roof],[front,w*.83,roof],[front+.30,w*.91,.66],[front+.65,w,.30]],shade(m.color,-.055),()=>{
+        curve([[back+.12,y,.42],[back+.41,y*.85,roof-.09],[-.16,y*.85,roof-.09],[-.18,y,.41]],glass,.012,glass,.2,.22);
+        curve([[-.02,y,.41],[.01,y*.85,roof-.09],[front-.08,y*.85,roof-.09],[front+.39,y,.41]],glass,.013,glass,.2,.20);
         line([[back+.47,y,.67],[-.2,y,.67]],'#7598a9',1.1);
         line([[.16,y,.69],[front-.13,y*.88,.69]],'#6b90a2',.9);
         if(m.cub)line([[-.94,y,.37],[.94,y,.88]],'#bd8d26',2.1);
       });
-      poly([[front+.045,-w*.75,roof-.065],[front+.57,-w*.92,.36],[front+.57,w*.92,.36],[front+.045,w*.75,roof-.065]],'#50788b',.03);
+      curve([[front+.045,-w*.75,roof-.065],[front+.57,-w*.92,.36],[front+.57,w*.92,.36],[front+.045,w*.75,roof-.065]],'#50788b',.03,'#365d72',.35,.20);
       line([[front+.20,-w*.50,roof-.22],[front+.45,-w*.45,.46]],'#b6d9e4',1.1,.05);
       line([[-.13,y,.37],[-.13,y,-.26],[1.08,y,-.26],[1.10,y,.34]],shade(m.color,-.25),.65,.045);
       line([[.65,y+.005,.28],[.81,y+.005,.28]],'#667480',1.5,.045);
       if(m.cub){line([[-.7,-w,.87],[1.1,w,.40]],'#ca9826',1.9,.05)}
-      else if(m.cessna)poly([[-1.85,.35,.30],[-1.28,.42,.66],[-1.11,.43,.37]],glass,.03);
+      else if(m.cessna)curve([[-1.85,.35,.30],[-1.28,.42,.66],[-1.11,.43,.37]],glass,.03,glass,.2,.28);
     }
 
     // Cowling panels and the Cub's exposed cylinder heads.
@@ -222,7 +244,8 @@
         tube([[-1.25,.06,.10,0],[-.65,.34,.27,0],[.55,.37,.34,.03],[1.65,.33,.29,.04],[1.96,.15,.15,.04]],m.color,m.trim,[0,y,0]);
         line([[1.1,y+.345,.04],[1.7,y+.30,.05]],m.red,1.2);
         dot([1.83,y+.15,.05],3,'#243743');
-        propeller(2.01,y,.04,side<0);
+        // Keep both illustrated propellers moving in the same on-screen direction.
+        propeller(2.01,y,.04,false);
       });
     }else propeller(m.prop,0,m.cub?.10:.06);
     // Thin aerials and control-surface seams, scaled with the aircraft.

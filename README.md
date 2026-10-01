@@ -32,12 +32,13 @@ The background progresses by section through David's aircraft sequence:
 
 `assets/aircraft.js` builds original, stylized vector aircraft with paint colors
 from the supplied reference photos. Logos and registration numbers are omitted.
-These are decorative illustrations, not engineering models. Wings, tails,
-canopies, struts, fixed gear, and the Seminole's twin nacelles distinguish them.
+These are decorative illustrations, not engineering models. Continuous SVG
+curves form the fuselages, wings, canopies, and cabin-to-tail joins; struts,
+fixed gear, and the Seminole's twin nacelles distinguish the configurations.
 The Seminole appears in flight with its retractable gear stowed.
 
 `assets/aircraft.css` controls the crossfades and a deliberately slow, decorative
-4.8-second propeller revolution. The twin propellers counter-rotate. Rotors pause
+4.8-second propeller revolution. The twin propellers share one visual direction. Rotors pause
 when hidden or when the tab is in the background, and respect reduced motion.
 Aircraft positions are set before they become visible to prevent a loading flash.
 Section anchors adapt to changes in page height, including gallery filters.
