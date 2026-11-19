@@ -1,10 +1,9 @@
 # David LaBarre — Personal Site
 
-A static portfolio (`index.html`) with embedded photos, a separate résumé,
-site icons, and lightweight aircraft animation files under `assets/`.
-There is no build step. Google Fonts loads the page's two font families.
+A static portfolio (`index.html`) with a separate résumé, site icons, photos,
+fonts and aircraft renders under `assets/`. There is no build step.
 
-Live site: https://frenchbear1.github.io/david-labarre-site/
+Live site: https://frenchbear1.github.io/My-Portfolio/
 
 The attached résumé is available from the site's download links as
 `David-LaBarre-Resume.pdf`.
@@ -16,32 +15,44 @@ includes an "Open in new tab" fallback.
 On wider screens, the scrolling altitude display tops out at 12,500 feet and
 surfaces compact, altitude-aware FAA and Part 91 quick-reference cues.
 
+## Performance
+
+The page is built to load quickly on slow phones and connections:
+
+- `index.html` is ~45 KB. Photos live in `assets/photos/` as WebP in two sizes
+  (480 px and full) and load lazily with `srcset`, so phones fetch the small ones.
+- Fonts (Fraunces and Figtree, SIL Open Font License) are self-hosted variable
+  WOFF2 files in `assets/fonts/`, so there is no third-party request before first paint.
+- All scroll effects run in one `requestAnimationFrame` loop (`assets/site.js`)
+  that stops when the page is still, and layout is measured once per resize.
+  Idle motion (hero blob, aircraft bob) is pure CSS and pauses off-screen or in
+  background tabs.
+- Data Saver, 2G connections and low-memory devices get a lighter mode
+  (no backdrop blur, smaller aircraft images, no prefetching).
+- Motion respects `prefers-reduced-motion`.
+
 ## Aircraft background
 
 The background progresses by section through David's aircraft sequence:
 
 | Section | Aircraft |
 | --- | --- |
-| Introduction | Yellow Piper J-3 Cub |
-| About | Diamond DA-20 |
-| Flight log | Piper PA-28-181 |
-| Experience | Cessna 172S |
-| Aviation tools | Extra 330 |
-| Photos | Piper PA-44 Seminole |
-| Contact | Piper PA-28-181 |
+| Introduction | Piper J-3 Cub |
+| About | Diamond DA20-C1 |
+| Flight log | Piper PA-28-181 Archer |
+| Experience | Cessna 172S Skyhawk |
+| Aviation tools | Extra 330LX |
+| Photos | Piper PA-44-180 Seminole |
+| Contact | Piper PA-28-181 Archer |
 
-`assets/aircraft.js` builds original, stylized vector aircraft with paint colors
-from the supplied reference photos. Logos and registration numbers are omitted.
-These are decorative illustrations, not engineering models. Continuous SVG
-curves form the fuselages, wings, canopies, and cabin-to-tail joins; struts,
-fixed gear, and the Seminole's twin nacelles distinguish the configurations.
-The Seminole appears in flight with its retractable gear stowed.
-
-`assets/aircraft.css` controls the crossfades and a deliberately slow, decorative
-4.8-second propeller revolution. The twin propellers share one visual direction. Rotors pause
-when hidden or when the tab is in the background, and respect reduced motion.
-Aircraft positions are set before they become visible to prevent a loading flash.
-Section anchors adapt to changes in page height, including gallery filters.
+Each aircraft is a photoreal render of an original 3D model built to the type's
+published dimensions (span, length, chord, dihedral, tail layout), with paint
+inspired by the supplied photos. Logos and registration numbers are omitted.
+They are decorative illustrations, not engineering models. Renders are
+transparent WebP files in `assets/aircraft/` (`*-1600.webp` for large and retina
+screens, `*-800.webp` otherwise, ~35–125 KB each). Only the aircraft on screen is
+downloaded, and the next one is fetched when the browser is idle. Propellers
+are rendered with motion blur, the way they look in flight photos.
 
 Reference material used for proportions and configurations:
 - [Smithsonian J-3 Cub](https://airandspace.si.edu/collection-objects/piper-j-3-cub/nasm_A19771128000)
@@ -57,8 +68,9 @@ Reference material used for proportions and configurations:
    — for a URL like `yourname.github.io/anything`, any name works. If you
    want your site at `yourname.github.io` exactly, name the repo
    `yourname.github.io` (replace `yourname` with your GitHub username).
-2. **Upload the site.** Include `index.html`, the `assets/` folder,
-   `site.webmanifest`, and `David-LaBarre-Resume.pdf`, then commit.
+2. **Upload the site.** Include `index.html`, the whole `assets/` folder
+   (photos, fonts, aircraft, icons, scripts), `site.webmanifest`, and
+   `David-LaBarre-Resume.pdf`, then commit.
 3. **Turn on Pages.** Go to the repo's Settings tab → Pages (left sidebar).
    Under "Build and deployment," set Source to "Deploy from a branch," Branch
    to `main` and folder to `/ (root)`, then Save.
@@ -85,5 +97,8 @@ If you buy a domain (Namecheap, Google Domains, etc.):
 
 ## Making changes later
 
-Edit `index.html` for page content and the files in `assets/` for aircraft and
-icons, then commit the changed files to the repository.
+Edit `index.html` for page content, `assets/site.js` for interactions, and the
+files in `assets/` for photos, aircraft and icons, then commit the changed files.
+To add a photo, save it as WebP in `assets/photos/` at 480 px wide and at full
+size (e.g. `name-480.webp` and `name-1000.webp`), then copy an existing gallery
+`<button class="ph">` entry and update its file names, size and alt text.
