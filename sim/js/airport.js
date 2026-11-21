@@ -14,19 +14,33 @@ export function bearing(lat1, lon1, lat2, lon2) {
 }
 const roughMagVar = (lat, lon) => Math.max(-22, Math.min(22, -(lon + 92.5) * 0.58 + (lat - 38) * -0.08));
 
+let onBusy = () => {};
+export const setBusyHandler = fn => { onBusy = fn || (() => {}); };
+const sleep = ms => new Promise(res => setTimeout(res, ms));
+const mem = new Map();
 async function query(service, where, fields = '*') {
   const p = new URLSearchParams({ where, outFields: fields, outSR: '4326', f: 'geojson', returnGeometry: 'true', geometryPrecision: '6', resultRecordCount: '40' });
   const url = `${FAA}/${service}/FeatureServer/0/query?${p}`;
+  if (mem.has(url)) return mem.get(url);
   let store = null;
-  try { store = await caches.open('skyhawk-faa-v1'); const hit = await store.match(url); if (hit) return (await hit.json()).features || []; } catch { /* no cache */ }
+  try { store = await caches.open('skyhawk-faa-v1'); const hit = await store.match(url); if (hit) { const f = (await hit.json()).features || []; mem.set(url, f); return f; } } catch { /* no cache */ }
+  // The FAA's ArcGIS service rate-limits bursts and reports it either as HTTP 429 or as a JSON
+  // error ("Too many requests") with HTTP 200, so both are retried with a growing back-off.
   for (let attempt = 0; ; attempt++) {
-    const r = await fetch(url);
-    if ((r.status === 429 || r.status >= 500) && attempt < 2) { await new Promise(res => setTimeout(res, 1200 * (attempt + 1))); continue; }
-    if (!r.ok) throw new Error('FAA HTTP ' + r.status);
-    const text = await r.text(), j = JSON.parse(text);
-    if (j.error) throw new Error('FAA: ' + (j.error.message || 'query error'));
+    let busy = false, text = '', j = null;
+    try {
+      const r = await fetch(url);
+      if (r.status === 429 || r.status >= 500) busy = true;
+      else if (!r.ok) throw new Error('FAA HTTP ' + r.status);
+      else { text = await r.text(); j = JSON.parse(text); if (j.error) { if (j.error.code === 429 || /too many/i.test(j.error.message || '') || /too many/i.test((j.error.details || []).join(' '))) busy = true; else throw new Error('FAA: ' + (j.error.message || 'query error')); } }
+    } catch (e) { if (attempt >= 3 || e.message.startsWith('FAA')) throw e; busy = true; }      // network blip: retry too
+    if (busy) {
+      if (attempt >= 5) throw new Error('FAA busy');
+      const wait = Math.min(12000, 1500 * 2 ** attempt) + Math.random() * 600; onBusy(Math.round(wait / 1000)); await sleep(wait); continue;
+    }
+    const feats = j.features || []; mem.set(url, feats);
     if (store) store.put(url, new Response(text, { headers: { 'content-type': 'application/json' } })).catch(() => {});
-    return j.features || [];
+    return feats;
   }
 }
 const esc = s => String(s).replace(/[^A-Z0-9]/gi, '').toUpperCase();

@@ -3,7 +3,7 @@
 import { C172, createState, step, readout } from './fdm.js';
 import { buildAircraftModel } from './model.js';
 import { createTerrainProvider, elevAsync, elevSync } from './terrain.js';
-import { findAirport } from './airport.js';
+import { findAirport, setBusyHandler } from './airport.js?v=2';
 import { createControls } from './controls.js';
 import { createHud, createMinimap, createAudio } from './hud.js';
 
@@ -127,6 +127,7 @@ let findSeq = 0, findTimer = 0;
 async function lookup() {
   const id = icao.value.trim().toUpperCase(); if (id.length < 3) { aptInfo.textContent = 'US airports, live FAA data'; aptInfo.className = ''; return; }
   const my = ++findSeq; aptInfo.textContent = 'Looking up ' + id + '…'; aptInfo.className = ''; startBtn.disabled = true;
+  setBusyHandler(sec => { if (my === findSeq) aptInfo.textContent = `FAA server is busy, retrying in ${sec}s…`; });
   try {
     const a = await findAirport(id); if (my !== findSeq) return;
     if (!a) { apt = null; aptInfo.textContent = `No airport found for ${id}`; aptInfo.className = 'err'; rwys.innerHTML = '<i class="muted">—</i>'; return; }
@@ -142,10 +143,13 @@ async function lookup() {
     }));
     chosen && chosen.click();
     flyOverview();
-  } catch (e) { if (my !== findSeq) return; console.warn(e); aptInfo.textContent = 'Could not reach the FAA airport service. Try again.'; aptInfo.className = 'err'; }
+  } catch (e) {
+    if (my !== findSeq) return; console.warn(e);
+    aptInfo.textContent = /busy/.test(e.message) ? 'FAA server is busy right now. Wait a few seconds and press search.' : 'Could not reach the FAA airport service. Check your connection and press search.'; aptInfo.className = 'err';
+  }
 }
 const titleCase = t => String(t).toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase()).replace(/\bIntl\b/, 'Intl');
-icao.addEventListener('input', () => { icao.value = icao.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); clearTimeout(findTimer); findTimer = setTimeout(lookup, 550); });
+icao.addEventListener('input', () => { icao.value = icao.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); clearTimeout(findTimer); const v = icao.value; if (v !== opts.icao || !apt) { startBtn.disabled = true; aptInfo.className = ''; aptInfo.textContent = v.length < 3 ? 'US airports, live FAA data' : 'Press Enter to search'; } if (v.length === 4 || (v.length === 3 && /\d/.test(v))) findTimer = setTimeout(lookup, 700); });
 icao.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); clearTimeout(findTimer); lookup(); } });
 $('#findApt').onclick = () => { clearTimeout(findTimer); lookup(); };
 $$('.seg[data-opt]').forEach(seg => {
