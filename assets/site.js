@@ -212,6 +212,35 @@
   vc.addEventListener('click', closeTool);
   tv.addEventListener('click', e => { if (e.target === tv) closeTool(); });
 
+  // ---------------------------------------------------------------- flight sim
+  // Full-screen overlay with the sim in an iframe (loaded only when opened). Closing restores the
+  // exact scroll position and unloads the sim so the portfolio stays light.
+  const sv = document.getElementById('sim-viewer'), sf = document.getElementById('sim-frame');
+  let simY = 0, simReturn = null, simTimer;
+  function openSim(btn) {
+    clearTimeout(simTimer); simReturn = btn; simY = scrollY;
+    if (sf.getAttribute('src') === 'about:blank') sf.src = 'sim/';
+    sv.setAttribute('aria-hidden', 'false'); document.body.classList.add('sim-open');
+    [...document.body.children].forEach(el => { if (el !== sv && el.tagName !== 'SCRIPT') el.inert = true; });
+    const fs = sv.requestFullscreen || sv.webkitRequestFullscreen;
+    if (fs) { try { const p = fs.call(sv, { navigationUI: 'hide' }); p && p.then(() => screen.orientation?.lock?.('landscape').catch(() => {})).catch(() => {}); } catch { /* not allowed */ } }
+    requestAnimationFrame(() => { sv.classList.add('on'); sf.focus(); });
+  }
+  function closeSim() {
+    if (!sv.classList.contains('on')) return;
+    const fe = document.fullscreenElement || document.webkitFullscreenElement;
+    if (fe) (document.exitFullscreen || document.webkitExitFullscreen).call(document).catch?.(() => {});
+    sv.classList.remove('on'); sv.setAttribute('aria-hidden', 'true'); document.body.classList.remove('sim-open');
+    [...document.body.children].forEach(el => { if (el !== sv && el.tagName !== 'SCRIPT') el.inert = false; });
+    const back = () => scrollTo({ top: simY, behavior: 'instant' });
+    back(); requestAnimationFrame(back); setTimeout(back, 250);
+    simTimer = setTimeout(() => { sf.src = 'about:blank'; }, 400);
+    simReturn?.focus({ preventScroll: true });
+  }
+  $('[data-sim-open]').forEach(b => b.addEventListener('click', () => openSim(b)));
+  addEventListener('message', e => { if (e.source === sf.contentWindow && e.data && e.data.type === 'skyhawk:exit') closeSim(); });
+  document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && sv.classList.contains('on')) scrollTo({ top: simY, behavior: 'instant' }); });
+
   addEventListener('keydown', e => {
     if (e.key === 'Escape') { closeTool(); closeLb(); }
     if (!lb.classList.contains('on')) return;

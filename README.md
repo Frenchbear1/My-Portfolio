@@ -44,6 +44,7 @@ The background progresses by section through David's aircraft sequence:
 | Aviation tools | Extra 330LX |
 | Photos | Piper PA-44-180 Seminole |
 | Contact | Piper PA-28-181 Archer |
+| Flight sim | Cessna 172S Skyhawk |
 
 Each aircraft is a photoreal render of an original 3D model built to the type's
 published dimensions (span, length, chord, dihedral, tail layout), with paint
@@ -102,3 +103,27 @@ files in `assets/` for photos, aircraft and icons, then commit the changed files
 To add a photo, save it as WebP in `assets/photos/` at 480 px wide and at full
 size (e.g. `name-480.webp` and `name-1000.webp`), then copy an existing gallery
 `<button class="ph">` entry and update its file names, size and alt text.
+
+## Fly the Skyhawk (flight sim)
+
+The last section launches `sim/`, a hand-flown Cessna 172S simulator, in a full-screen
+overlay. Nothing from it loads until **Take off** is pressed; closing it returns to the
+same scroll position and unloads the sim.
+
+- **Setup popup**: type any US airport ICAO/FAA identifier (live FAA AIS data), pick a
+  runway, start on the runway or in the air on downwind, and choose time of day, clouds,
+  wind, map layer (satellite, VFR sectional, topo) and, on touch screens, joystick or tilt.
+- **World**: CesiumJS (from jsDelivr, no ion key), AWS Terrain Tiles elevation, USGS
+  imagery and topo, FAA sectional/TAC charts, NASA GIBS city lights at night.
+- **Flight model** (`sim/js/fdm.js`): six-degree-of-freedom rigid body using published-range
+  172 stability derivatives, a stall break (clean stall about 48 KIAS), post-stall
+  autorotation so an uncoordinated stall drops a wing and spins, left-turning tendencies,
+  flaps, trim, and spring/damper landing gear with brakes and nose-wheel steering.
+- **Controls**: arrows pitch/roll, A/D rudder, W/S throttle, F/V flaps, Q/E trim, Space brakes,
+  C camera (chase, cockpit, fly-by), M map, N time, P pause. Phones and iPads get an
+  on-screen joystick (or device tilt), rudder pedals, throttle, trim and brake, with the
+  rest as icons.
+
+The 3D model is generated in the browser, adapted from
+[3D-Flight-Sim](https://github.com/Frenchbear1/3D-Flight-Sim). Representative behaviour
+for fun, not training.

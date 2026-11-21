@@ -16,9 +16,9 @@
     { id: 'extra', name: 'Extra 330LX' },
     { id: 'seminole', name: 'Piper PA-44-180 Seminole' }
   ];
-  // Section -> aircraft: intro, about, log, experience, tools, photos, contact.
-  const order = [0, 1, 2, 3, 4, 5, 2];
-  const sections = ['hero', 'about', 'log', 'path', 'tools', 'gallery', 'contact'];
+  // Section -> aircraft: intro, about, log, experience, tools, photos, contact, flight sim.
+  const order = [0, 1, 2, 3, 4, 5, 2, 3];
+  const sections = ['hero', 'about', 'log', 'path', 'tools', 'gallery', 'contact', 'flight-sim'];
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   const lite = document.documentElement.classList.contains('lite');
   const carriers = [...host.querySelectorAll('.plane')].map(el => ({ el, bob: el.querySelector('.bob'), imgs: [], w: 0 }));
