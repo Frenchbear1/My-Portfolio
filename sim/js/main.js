@@ -68,10 +68,30 @@ async function initWorld() {
   for (let i = 0; i < 6; i++) lights.add({ pixelSize: 5, color: C.Color.WHITE, show: false, scaleByDistance: new C.NearFarScalar(30, 1.6, 2e4, 0.6) });
   rwyLights = scene.primitives.add(new C.PointPrimitiveCollection());
   let last = performance.now();
-  scene.preUpdate.addEventListener(() => { const now = performance.now(), dt = Math.min(0.1, (now - last) / 1000); last = now; frame(dt); });
+  // an exception inside a Cesium frame stops its render loop (black screen), so the sim's own work is
+  // guarded, and if the renderer itself fails it is simplified and restarted instead of staying dead
+  scene.preUpdate.addEventListener(() => { const now = performance.now(), dt = Math.min(0.1, (now - last) / 1000); last = now; try { frame(dt); } catch (e) { report('Sim', e); } });
+  let renderErrs = 0;
+  scene.renderError.addEventListener((sc, err) => {
+    renderErrs++; report('Graphics', err);
+    if (renderErrs === 1 && clouds) { scene.primitives.remove(clouds); clouds = null; }                 // clouds are the heaviest effect
+    if (renderErrs === 2) { viewer.resolutionScale = 1; scene.fog.enabled = false; globe.maximumScreenSpaceError = 4; }
+    if (renderErrs <= 6) setTimeout(() => { viewer.useDefaultRenderLoop = true; }, 300);
+  });
+  scene.canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); report('Graphics', new Error('WebGL context lost (out of graphics memory)')); }, false);
+  // safety net: if the globe stops drawing while flying, keep the instruments and physics alive
+  setInterval(() => { if (sim.flying && performance.now() - last > 1500) { try { viewer.useDefaultRenderLoop = true; scene.requestRender(); } catch { /* still down */ } } }, 1000);
 }
 // while a menu is up and nothing is flying, only redraw the globe when something actually changes
 function idle(on) { if (scene) { scene.requestRenderMode = on; if (!on) scene.requestRender(); } }
+const reported = new Set();
+function report(where, e) {
+  const msg = `${where} error: ${(e && (e.message || e)) || 'unknown'}`.slice(0, 160); console.error(msg, e);
+  if (reported.has(msg)) return; reported.add(msg);
+  const el = $('#errbox'); el.textContent = msg + '  (screenshot this for David\'s developer)'; el.classList.add('on'); setTimeout(() => el.classList.remove('on'), 12000);
+}
+window.addEventListener('error', e => report('Page', e.error || e.message));
+window.addEventListener('unhandledrejection', e => report('Page', e.reason));
 function applyMap() {
   const m = opts.map;
   if (layers.sat) layers.sat.show = m !== 'topo';

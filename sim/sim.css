@@ -171,3 +171,5 @@ body.mfdoff #minimap{display:none}
 .card.small.mapcard>.go{display:flex;width:100%;height:auto;border-radius:16px;background:linear-gradient(135deg,var(--gold),#ffb02e);border:0;color:#2a1800}.card.small.mapcard>.go svg{width:22px;height:22px}
 /* iOS zooms the page when a focused field is under 16px; keep every field at 16px or more */
 input{font-size:max(16px,1em)}
+#errbox{position:fixed;left:50%;bottom:calc(70px + var(--sb));transform:translateX(-50%);max-width:min(92vw,620px);padding:9px 14px;border-radius:12px;background:rgba(150,20,20,.92);border:1px solid #ff8a8a;font:600 12px/1.35 ui-monospace,monospace;z-index:40;display:none;user-select:text;-webkit-user-select:text}
+#errbox.on{display:block}
