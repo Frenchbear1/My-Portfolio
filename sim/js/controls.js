@@ -2,10 +2,11 @@
 // pedals, throttle slider, brakes and trim for touch screens, and device tilt as the yoke.
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const toward = (v, t, rate, dt) => v + clamp(t - v, -rate * dt, rate * dt);
+const expo = (v, p) => Math.sign(v) * Math.abs(v) ** p;      // soft around centre, full deflection still available
 
 export function createControls({ onAction }) {
   const keys = new Set();
-  const st = { de: 0, da: 0, dr: 0, thr: 0, brk: 0, trim: 0, flaps: 0 };
+  const st = { de: 0, da: 0, dr: 0, thr: 0, brk: 0, trim: 0, flaps: 0 }, raw = { de: 0, da: 0 };
   const touch = { x: 0, y: 0, active: false, rud: 0, brk: 0, trimDir: 0 };
   const tilt = { on: false, roll: 0, pitch: 0, ref: null, raw: null, ok: false };
   let mode = 'keys';
@@ -82,14 +83,16 @@ export function createControls({ onAction }) {
     if (mode === 'tilt' && tilt.ok && tilt.ref) {
       let r = tilt.raw.roll - tilt.ref.roll, p = tilt.ref.pitch - tilt.raw.pitch;
       const dz = (v, z) => Math.sign(v) * Math.max(0, Math.abs(v) - z);
-      da = clamp(dz(r, 0.03) / 0.5, -1, 1); de = clamp(dz(p, 0.03) / 0.42, -1, 1);
-      da = Math.sign(da) * Math.abs(da) ** 1.4; de = Math.sign(de) * Math.abs(de) ** 1.4;
+      // full aileron at about 65 degrees of wheel-turn, full elevator at about 40 degrees of tip
+      da = expo(clamp(dz(r, 0.04) / 1.13, -1, 1), 1.8); de = expo(clamp(dz(p, 0.04) / 0.7, -1, 1), 1.8);
       st.de = toward(st.de, de, 6, dt); st.da = toward(st.da, da, 8, dt);
     } else if (touch.active) {
-      st.de = toward(st.de, Math.sign(touch.y) * Math.abs(touch.y) ** 1.5, 8, dt); st.da = toward(st.da, Math.sign(touch.x) * Math.abs(touch.x) ** 1.5, 10, dt);
+      st.de = toward(st.de, expo(touch.y, 2.1), 6, dt); st.da = toward(st.da, expo(touch.x, 1.9), 8, dt);
     } else {
-      st.de = pitchKey ? toward(st.de, pitchKey, pitchKey * st.de < 0 ? 3 : 1.1, dt) : toward(st.de, 0, 2.2, dt);
-      st.da = rollKey ? toward(st.da, rollKey, rollKey * st.da < 0 ? 5 : 2, dt) : toward(st.da, 0, 4, dt);
+      // keys build up deflection gradually (about 1.7 s to full) and the output is shaped, so taps are small corrections
+      raw.de = pitchKey ? toward(raw.de, pitchKey, pitchKey * raw.de < 0 ? 3 : 0.6, dt) : toward(raw.de, 0, 2.4, dt);
+      raw.da = rollKey ? toward(raw.da, rollKey, rollKey * raw.da < 0 ? 4 : 0.9, dt) : toward(raw.da, 0, 3.5, dt);
+      st.de = expo(raw.de, 1.8); st.da = expo(raw.da, 1.6);
     }
     dr = rudKey || touch.rud; st.dr = dr ? toward(st.dr, dr, dr * st.dr < 0 ? 5 : 2.2, dt) : toward(st.dr, 0, 3.5, dt);
     if (k('KeyW') || k('ShiftLeft') || k('PageUp')) st.thr = clamp(st.thr + dt * 0.55, 0, 1);
@@ -104,6 +107,6 @@ export function createControls({ onAction }) {
     st, update, enableTilt, recenter,
     setMode(m) { mode = m; document.body.classList.toggle('tilt', m === 'tilt'); },
     get mode() { return mode; },
-    reset(o = {}) { Object.assign(st, { de: 0, da: 0, dr: 0, thr: 0, brk: 0, trim: 0, flaps: 0 }, o); keys.clear(); },
+    reset(o = {}) { raw.de = raw.da = 0; Object.assign(st, { de: 0, da: 0, dr: 0, thr: 0, brk: 0, trim: 0, flaps: 0 }, o); keys.clear(); },
   };
 }

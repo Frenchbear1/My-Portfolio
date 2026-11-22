@@ -6,8 +6,8 @@ import { createLink } from './link.js?v=2';
 import { buildAircraftModel } from './model.js';
 import { createTerrainProvider, elevAsync, elevSync } from './terrain.js';
 import { findAirport, setBusyHandler } from './airport.js?v=2';
-import { createControls } from './controls.js';
-import { createHud, createMinimap, createAudio } from './hud.js?v=2';
+import { createControls } from './controls.js?v=2';
+import { createHud, createMinimap, createAudio } from './hud.js?v=3';
 
 const C = window.Cesium, D2R = Math.PI / 180, R2D = 180 / Math.PI, FT = 0.3048, KT = 0.514444, RE = 6371000;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v), angDiff = (a, b) => ((b - a + 540) % 360) - 180;
@@ -313,7 +313,7 @@ function frame(dt) {
   if (s.msg && s.msg !== sim.lastMsg) { sim.lastMsg = s.msg; toast(s.msg); setTimeout(() => { if (sim.lastMsg === s.msg) { s.msg = ''; sim.lastMsg = ''; } }, 2500); }
   const now = performance.now();
   if (now - sim.trailT > 1500) { sim.trailT = now; sim.trail.push([lat, lon]); if (sim.trail.length > 500) sim.trail.shift(); }
-  if (now - sim.miniT > 150 && !$('#minimap').classList.contains('off')) { sim.miniT = now; minimap.draw(lat, lon, r.hdg, sim.trail.concat([[lat, lon]]), apt.runways); }
+  if (now - sim.miniT > 150 && !$('#minimap').classList.contains('off')) { sim.miniT = now; minimap.draw(lat, lon, r.hdg, r.trk, sim.trail.concat([[lat, lon]]), apt.runways); }
   if (now - telT > 180) { telT = now; link.send({ rpm: Math.round(s.rpm), fuelL: s.fuelL, fuelR: s.fuelR, flap: s.flap, onGround: s.onGround, warn: r.warn, crashed: s.crashed, paused: sim.paused, msg: s.msg, starved: s.starved, noFuel: s.starveT > 0.5 }); }
   if (s.crashed && !sim.crashedShown) { sim.crashedShown = true; setTimeout(() => { $('#crashWhy').textContent = s.crashed; show('#crash', true); }, 1300); }
 }
@@ -377,13 +377,15 @@ function act(a) {
   switch (a) {
     case 'pause': if (helpOpen) return act('closeHelp'); pause(!sim.paused); break;
     case 'resume': pause(false); break;
-    case 'escape': if ($('#wb').classList.contains('on')) act('closeWb'); else if ($('#phone').classList.contains('on')) act('closePhone'); else if (helpOpen) act('closeHelp'); else if ($('#setup').classList.contains('on')) { if (sim.flying) { show('#setup', false); pause(true); } else act('exit'); } else if (sim.flying) pause(!sim.paused); break;
+    case 'escape': if ($('#mapSheet').classList.contains('on')) act('closeMap'); else if ($('#wb').classList.contains('on')) act('closeWb'); else if ($('#phone').classList.contains('on')) act('closePhone'); else if (helpOpen) act('closeHelp'); else if ($('#setup').classList.contains('on')) { if (sim.flying) { show('#setup', false); pause(true); } else act('exit'); } else if (sim.flying) pause(!sim.paused); break;
     case 'cam': sim.cam = CAMS[(CAMS.indexOf(sim.cam) + 1) % CAMS.length]; sim.fly = null; sim.hdgS = null; toast({ chase: 'Chase view', cockpit: 'Cockpit view', flyby: 'Fly-by view' }[sim.cam]); break;
     case 'flapsDown': controls.st.flaps = Math.min(3, controls.st.flaps + 1); updateFlapInd(); break;
     case 'flapsUp': controls.st.flaps = Math.max(0, controls.st.flaps - 1); updateFlapInd(); break;
     case 'map': opts.map = { sat: 'sectional', sectional: 'topo', topo: 'sat' }[opts.map]; applyMap(); toast({ sat: 'Satellite', sectional: 'VFR sectional', topo: 'Topo map' }[opts.map]); syncSeg('map'); break;
     case 'time': opts.time = { day: 'dusk', dusk: 'night', night: 'day' }[opts.time]; setTime(opts.time); toast({ day: 'Day', dusk: 'Dusk', night: 'Night' }[opts.time]); syncSeg('time'); break;
     case 'mini': $('#minimap').classList.toggle('off'); break;
+    case 'mapMenu': if (!sim.flying) return; if (!sim.paused) { sim.mapPaused = true; sim.paused = true; audio.suspend(); } syncMapSheet(); show('#mapSheet', true); break;
+    case 'closeMap': show('#mapSheet', false); try { localStorage.setItem('skyhawk-setup', JSON.stringify(opts)); } catch { /* private */ } if (sim.mapPaused) { sim.mapPaused = false; sim.paused = false; audio.resume(); } break;
     case 'sound': audio.on = !audio.on; $('#bar').dataset.sound = audio.on ? 'on' : 'off'; if (!audio.on) audio.suspend(); break;
     case 'help': if (!sim.flying) return; show('#help', !helpOpen); if (!helpOpen && !sim.paused) { sim.helpPaused = true; sim.paused = true; } break;
     case 'closeHelp': show('#help', false); if (sim.helpPaused) { sim.helpPaused = false; sim.paused = false; } break;
@@ -411,11 +413,17 @@ gEl.addEventListener('pointermove', e => { const d = sim.look.drag; if (!d) retu
 gEl.addEventListener('pointerup', () => { sim.look.drag = false; });
 
 // ---------------------------------------------------------------- boot
-const controls = createControls({ onAction: act }), hud = createHud($('#hud')), minimap = createMinimap($('#minimap'), SAT_TILES), audio = createAudio();
+const controls = createControls({ onAction: act }), hud = createHud($('#hud')), minimap = createMinimap($('#minimap'), { sat: { url: SAT_TILES, max: 16 }, topo: { url: USGS + '/USGSTopo/MapServer/tile/{z}/{y}/{x}', max: 16 }, sectional: { url: FAA_TILES + '/VFR_Sectional/MapServer/tile/{z}/{y}/{x}', max: 12 } }), audio = createAudio();
 if (IS_TOUCH) $('#minimap').width = $('#minimap').height = 240;
 else $('#minimap').width = $('#minimap').height = 300;
 await initWorld();
 icao.value = opts.icao || ''; if (icao.value) lookup();
 setTimeout(() => { if (!IS_TOUCH) icao.focus({ preventScroll: true }); }, 300);
+// moving-map popup: tap the map circle
+if (!opts.mini) opts.mini = { src: 'sat', up: 'north', zoom: 13 };
+Object.assign(minimap.o, opts.mini);
+function syncMapSheet() { $$('#mapSheet .seg button').forEach(b => b.classList.toggle('on', String(minimap.o[b.parentElement.dataset.mini]) === b.dataset.v)); }
+$$('#mapSheet .seg button').forEach(b => b.addEventListener('click', () => { const k = b.parentElement.dataset.mini; minimap.o[k] = k === 'zoom' ? +b.dataset.v : b.dataset.v; opts.mini = { ...minimap.o }; sim.miniT = 0; syncMapSheet(); }));
+$('#minimap').addEventListener('click', () => act('mapMenu'));
 wbUi();
 window.__sim = { link, get ac() { return ac; }, get elec() { return elec; }, sim, opts, get s() { return s; }, get apt() { return apt; }, act, readout: () => s && readout(s), viewer: () => viewer, controls };

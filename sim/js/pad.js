@@ -114,16 +114,17 @@ function readTilt() {
   if (!tiltOk || !opt.tilt) { ctl.a = 0; ctl.e = 0; return; }
   if (!base) base = { u: raw.u, r: raw.r, z: raw.z };
   const dp = Math.atan2(base.u * raw.z - base.z * raw.u, base.u * raw.u + base.z * raw.z);
-  const dr = Math.asin(clamp(base.r, -1, 1)) - Math.asin(clamp(raw.r, -1, 1)), dz = v => (Math.abs(v) < 0.03 ? 0 : v - Math.sign(v) * 0.03);
-  const a = clamp(dz(dr) / (0.5 / opt.sens), -1, 1) * (opt.invR ? -1 : 1), e = clamp(-dz(dp) / (0.36 / opt.sens), -1, 1) * (opt.invP ? -1 : 1);
+  const dr = Math.asin(clamp(base.r, -1, 1)) - Math.asin(clamp(raw.r, -1, 1)), dz = v => (Math.abs(v) < 0.04 ? 0 : v - Math.sign(v) * 0.04);
+  const ex = (v, p) => Math.sign(v) * Math.abs(v) ** p;   // full aileron at ~65 deg of wheel-turn, full elevator at ~40 deg of tip; gentle around centre
+  const a = ex(clamp(dz(dr) / (1.13 / opt.sens), -1, 1), 1.8) * (opt.invR ? -1 : 1), e = ex(clamp(-dz(dp) / (0.7 / opt.sens), -1, 1), 1.8) * (opt.invP ? -1 : 1);
   ctl.a += (a - ctl.a) * 0.5; ctl.e += (e - ctl.e) * 0.5;
 }
 { let t = 0; const free = el => !el.closest('.track,#rud,.toes,#ptW,#flT,#key,#sel,button,.sheet,#start');
   document.addEventListener('touchstart', e => { clearTimeout(t); if (e.touches.length === 2 && [...e.touches].every(x => free(x.target))) t = setTimeout(recenter, 350); }, { passive: true });
   const stop = e => { if (e.touches.length < 2) clearTimeout(t); }; document.addEventListener('touchend', stop, { passive: true }); document.addEventListener('touchcancel', stop, { passive: true }); }
-{ const w = $('inst'), st = $('stick'); let o = null;
+{ const w = $('inst'), st = $('stick'); let o = null; const ex2 = v => Math.sign(v) * v * v;
   w.addEventListener('pointerdown', e => { if (tiltOk && opt.tilt) return; w.setPointerCapture(e.pointerId); o = [e.clientX, e.clientY]; touchStick = { a: 0, e: 0 }; st.hidden = false; const r = w.getBoundingClientRect(); st.style.left = o[0] - r.left + 'px'; st.style.top = o[1] - r.top + 'px'; });
-  w.addEventListener('pointermove', e => { if (!o) return; const R = Math.min(w.clientWidth, w.clientHeight) * 0.38; touchStick = { a: clamp((e.clientX - o[0]) / R, -1, 1), e: clamp((e.clientY - o[1]) / R, -1, 1) }; const r = w.getBoundingClientRect(); st.style.left = clamp(o[0] - r.left + touchStick.a * R, 0, r.width) + 'px'; st.style.top = clamp(o[1] - r.top + touchStick.e * R, 0, r.height) + 'px'; });
+  w.addEventListener('pointermove', e => { if (!o) return; const R = Math.min(w.clientWidth, w.clientHeight) * 0.38; const ax = clamp((e.clientX - o[0]) / R, -1, 1), ey = clamp((e.clientY - o[1]) / R, -1, 1); touchStick = { a: ex2(ax), e: ex2(ey) }; const r = w.getBoundingClientRect(); st.style.left = clamp(o[0] - r.left + ax * R, 0, r.width) + 'px'; st.style.top = clamp(o[1] - r.top + ey * R, 0, r.height) + 'px'; });
   const up = () => { o = null; touchStick = null; st.hidden = true; }; w.addEventListener('pointerup', up); w.addEventListener('pointercancel', up); }
 
 // ---------- gauges ----------

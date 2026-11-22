@@ -88,33 +88,37 @@ export function createHud(canvas) {
 }
 
 // ---------------- moving map ----------------
-export function createMinimap(canvas, tileUrl) {
-  const g = canvas.getContext('2d'), cache = new Map(); let zoom = 13;
-  canvas.addEventListener('click', () => { zoom = zoom === 13 ? 11 : zoom === 11 ? 15 : 13; });
-  const tile = (z, x, y) => {
-    const k = z + '/' + x + '/' + y; let im = cache.get(k);
-    if (!im) { im = new Image(); im.decoding = 'async'; im.src = tileUrl.replace('{z}', z).replace('{x}', x).replace('{y}', y); cache.set(k, im); if (cache.size > 120) cache.delete(cache.keys().next().value); }
+// sources: { key: { url, max } }. Options (set by the map popup): src, up ('north' | 'track'), zoom.
+export function createMinimap(canvas, sources) {
+  const g = canvas.getContext('2d'), cache = new Map(), o = { src: 'sat', up: 'north', zoom: 13 };
+  const tile = (src, z, x, y) => {
+    const n = 2 ** z; x = ((x % n) + n) % n; if (y < 0 || y >= n) return null;
+    const k = src + z + '/' + x + '/' + y; let im = cache.get(k);
+    if (!im) { im = new Image(); im.decoding = 'async'; im.src = sources[src].url.replace('{z}', z).replace('{x}', x).replace('{y}', y); cache.set(k, im); if (cache.size > 160) cache.delete(cache.keys().next().value); }
     return im.complete && im.naturalWidth ? im : null;
   };
   const merc = (lat, lon, z) => { const n = 256 * 2 ** z, s = Math.sin(lat * Math.PI / 180); return [(lon + 180) / 360 * n, (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * n]; };
-  function draw(lat, lon, hdg, trail, runways) {
-    const S = canvas.width, c = S / 2, [px, py] = merc(lat, lon, zoom);
+  function draw(lat, lon, hdg, trk, trail, runways) {
+    const S = canvas.width, c = S / 2, zoom = o.zoom, src = sources[o.src] ? o.src : 'sat', tz = Math.min(zoom, sources[src].max), k = 2 ** (zoom - tz), [px, py] = merc(lat, lon, zoom);
+    const rot = o.up === 'track' ? -trk * Math.PI / 180 : 0, R = c * 1.45;      // draw a bit past the circle so rotated corners are covered
     g.save(); g.clearRect(0, 0, S, S); g.beginPath(); g.arc(c, c, c, 0, 7); g.clip(); g.fillStyle = '#16303a'; g.fillRect(0, 0, S, S);
-    const tx0 = Math.floor((px - c) / 256), ty0 = Math.floor((py - c) / 256), tx1 = Math.floor((px + c) / 256), ty1 = Math.floor((py + c) / 256);
-    for (let x = tx0; x <= tx1; x++) for (let y = ty0; y <= ty1; y++) { const im = tile(zoom, x, y); if (im) g.drawImage(im, x * 256 - px + c, y * 256 - py + c, 256, 256); }
-    g.fillStyle = 'rgba(4,16,31,.18)'; g.fillRect(0, 0, S, S);
-    // runways
+    g.translate(c, c); g.rotate(rot);
+    const ts = 256 * k, tx0 = Math.floor((px - R) / ts), ty0 = Math.floor((py - R) / ts), tx1 = Math.floor((px + R) / ts), ty1 = Math.floor((py + R) / ts);
+    for (let x = tx0; x <= tx1; x++) for (let y = ty0; y <= ty1; y++) { const im = tile(src, tz, x, y); if (im) g.drawImage(im, x * ts - px, y * ts - py, ts + 0.5, ts + 0.5); }
+    g.fillStyle = 'rgba(4,16,31,.15)'; g.fillRect(-R, -R, 2 * R, 2 * R);
     g.strokeStyle = '#fff'; g.lineCap = 'round';
-    for (const rw of runways || []) { const [a, b] = rw.ends.map(e => merc(e.lat, e.lon, zoom)); g.lineWidth = Math.max(3, rw.widthFt * 0.3048 / (156543 * Math.cos(lat * Math.PI / 180) / 2 ** zoom)); g.beginPath(); g.moveTo(a[0] - px + c, a[1] - py + c); g.lineTo(b[0] - px + c, b[1] - py + c); g.stroke(); }
-    // trail
-    if (trail.length > 1) { g.strokeStyle = 'rgba(255,90,216,.9)'; g.lineWidth = 3; g.beginPath(); trail.forEach((p, i) => { const [x, y] = merc(p[0], p[1], zoom); i ? g.lineTo(x - px + c, y - py + c) : g.moveTo(x - px + c, y - py + c); }); g.stroke(); }
-    // aircraft
-    g.translate(c, c); g.rotate(hdg * Math.PI / 180); g.fillStyle = '#ffc857'; g.strokeStyle = '#04101f'; g.lineWidth = 3;
+    for (const rw of runways || []) { const [a, b] = rw.ends.map(e => merc(e.lat, e.lon, zoom)); g.lineWidth = Math.max(3, rw.widthFt * 0.3048 / (156543 * Math.cos(lat * Math.PI / 180) / 2 ** zoom)); g.beginPath(); g.moveTo(a[0] - px, a[1] - py); g.lineTo(b[0] - px, b[1] - py); g.stroke(); }
+    if (trail.length > 1) { g.strokeStyle = 'rgba(255,90,216,.9)'; g.lineWidth = 3; g.beginPath(); trail.forEach((p, i) => { const [x, y] = merc(p[0], p[1], zoom); i ? g.lineTo(x - px, y - py) : g.moveTo(x - px, y - py); }); g.stroke(); }
+    // aircraft (points along its heading)
+    g.rotate(hdg * Math.PI / 180); g.fillStyle = '#ffc857'; g.strokeStyle = '#04101f'; g.lineWidth = 3;
     g.beginPath(); g.moveTo(0, -20); g.lineTo(4, -6); g.lineTo(20, 2); g.lineTo(20, 6); g.lineTo(4, 4); g.lineTo(3, 14); g.lineTo(8, 18); g.lineTo(-8, 18); g.lineTo(-3, 14); g.lineTo(-4, 4); g.lineTo(-20, 6); g.lineTo(-20, 2); g.lineTo(-4, -6); g.closePath(); g.stroke(); g.fill();
     g.restore();
-    g.fillStyle = '#fff'; g.font = '800 22px ui-monospace,monospace'; g.textAlign = 'center'; g.fillText('N', c, 26);
+    // north marker on the rim
+    const nx = c + Math.sin(rot) * (c - 20), ny = c - Math.cos(rot) * (c - 20);
+    g.fillStyle = 'rgba(4,16,31,.7)'; g.beginPath(); g.arc(nx, ny, 15, 0, 7); g.fill();
+    g.fillStyle = o.up === 'track' ? '#ff5d5d' : '#fff'; g.font = '800 20px ui-monospace,monospace'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('N', nx, ny + 1);
   }
-  return { draw };
+  return { draw, o };
 }
 
 // ---------------- sound ----------------

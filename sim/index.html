@@ -7,7 +7,7 @@
 <meta name="robots" content="noindex">
 <title>Fly the Skyhawk · David LaBarre</title>
 <link rel="icon" href="../assets/icons/favicon-browser-32.png">
-<link rel="stylesheet" href="sim.css?v=1">
+<link rel="stylesheet" href="sim.css?v=2">
 </head>
 <body>
 <div id="globe" aria-label="3D flight view"></div>
@@ -19,7 +19,7 @@
 <div id="chips" aria-live="polite"></div>
 
 <!-- minimap -->
-<canvas id="minimap" width="360" height="360" title="Map (tap to zoom)" aria-label="Moving map"></canvas>
+<canvas id="minimap" width="360" height="360" title="Map options (tap)" aria-label="Moving map"></canvas>
 
 <!-- icon bar -->
 <div id="bar" class="glass" role="toolbar" aria-label="Simulator controls">
@@ -103,6 +103,17 @@
   </div>
 </div>
 
+<!-- moving-map options (tap the map circle) -->
+<div id="mapSheet" class="overlay sheet2" role="dialog" aria-modal="true" aria-labelledby="mapTitle">
+  <div class="card glass small mapcard">
+    <h2 id="mapTitle">Map</h2>
+    <div class="field"><span>Layer</span><div class="seg" data-mini="src"><button type="button" data-v="sat">Satellite</button><button type="button" data-v="topo">Topo</button><button type="button" data-v="sectional">Sectional</button></div></div>
+    <div class="field"><span>Orientation</span><div class="seg" data-mini="up"><button type="button" data-v="north">North up</button><button type="button" data-v="track">Track up</button></div></div>
+    <div class="field"><span>Range</span><div class="seg" data-mini="zoom"><button type="button" data-v="10">Wide</button><button type="button" data-v="12">Area</button><button type="button" data-v="13">Local</button><button type="button" data-v="15">Close</button></div></div>
+    <button type="button" class="go" data-act="closeMap"><svg viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></svg><span>Resume</span></button>
+  </div>
+</div>
+
 <!-- pause -->
 <div id="pause" class="overlay" role="dialog" aria-modal="true" aria-label="Paused">
   <div class="icons glass">
@@ -148,7 +159,7 @@
   window.CESIUM_BASE_URL = base;
   var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = base + 'Widgets/widgets.css'; document.head.appendChild(l);
   var s = document.createElement('script'); s.src = base + 'Cesium.js';
-  s.onload = function () { import('./js/main.js?v=4').catch(function (e) { console.error(e); document.getElementById('aptInfo').textContent = 'Startup error: ' + e.message; }); };
+  s.onload = function () { import('./js/main.js?v=5').catch(function (e) { console.error(e); document.getElementById('aptInfo').textContent = 'Startup error: ' + e.message; }); };
   s.onerror = function () { document.getElementById('aptInfo').textContent = 'Could not load the 3D engine. Check your connection.'; };
   document.head.appendChild(s);
 })();
