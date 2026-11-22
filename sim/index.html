@@ -7,7 +7,7 @@
 <meta name="robots" content="noindex">
 <title>Fly the Skyhawk · David LaBarre</title>
 <link rel="icon" href="../assets/icons/favicon-browser-32.png">
-<link rel="stylesheet" href="sim.css?v=2">
+<link rel="stylesheet" href="sim.css?v=3">
 </head>
 <body>
 <div id="globe" aria-label="3D flight view"></div>
@@ -159,7 +159,7 @@
   window.CESIUM_BASE_URL = base;
   var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = base + 'Widgets/widgets.css'; document.head.appendChild(l);
   var s = document.createElement('script'); s.src = base + 'Cesium.js';
-  s.onload = function () { import('./js/main.js?v=5').catch(function (e) { console.error(e); document.getElementById('aptInfo').textContent = 'Startup error: ' + e.message; }); };
+  s.onload = function () { import('./js/main.js?v=6').catch(function (e) { console.error(e); document.getElementById('aptInfo').textContent = 'Startup error: ' + e.message; }); };
   s.onerror = function () { document.getElementById('aptInfo').textContent = 'Could not load the 3D engine. Check your connection.'; };
   document.head.appendChild(s);
 })();

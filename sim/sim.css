@@ -146,7 +146,7 @@ kbd{display:inline-block;min-width:28px;text-align:center;padding:4px 7px;border
 .wbt th:first-child,.wbt td:first-child{text-align:left}
 .wbt td{padding:3px 4px;text-align:right;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;border-top:1px solid rgba(255,255,255,.07)}
 .wbt td:first-child{font-family:inherit;font-weight:600}
-.wbt input{width:74px;padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.07);color:var(--ink);font:700 14px ui-monospace,monospace;text-align:right;user-select:text;-webkit-user-select:text}
+.wbt input{width:80px;padding:6px 8px;font-size:16px!important;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.07);color:var(--ink);font:700 14px ui-monospace,monospace;text-align:right;user-select:text;-webkit-user-select:text}
 .wbt input.arm{width:68px}
 .wbt input:focus{border-color:var(--blue);outline:0}
 .wbt tfoot th{font-size:13px;color:var(--ink);border-top:2px solid var(--line);padding-top:8px;font-family:ui-monospace,monospace;letter-spacing:0;text-transform:none}
@@ -169,3 +169,5 @@ body.mfdoff #minimap{display:none}
 .mapcard .go{margin-top:2px}
 #minimap{transition:transform .15s}#minimap:hover{transform:scale(1.03)}
 .card.small.mapcard>.go{display:flex;width:100%;height:auto;border-radius:16px;background:linear-gradient(135deg,var(--gold),#ffb02e);border:0;color:#2a1800}.card.small.mapcard>.go svg{width:22px;height:22px}
+/* iOS zooms the page when a focused field is under 16px; keep every field at 16px or more */
+input{font-size:max(16px,1em)}

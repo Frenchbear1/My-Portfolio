@@ -44,7 +44,9 @@ async function initWorld() {
    globe.showGroundAtmosphere = true; globe.baseColor = C.Color.fromCssColorString('#0b1a24');
   globe.maximumScreenSpaceError = IS_TOUCH ? 2.4 : 1.6; globe.tileCacheSize = IS_TOUCH ? 140 : 300; globe.preloadSiblings = true;
   scene.fog.enabled = true; scene.fog.density = 2.2e-4; scene.fog.minimumBrightness = 0.06; scene.highDynamicRange = false;
-  scene.postProcessStages.fxaa.enabled = IS_TOUCH; viewer.useBrowserRecommendedResolution = false; viewer.resolutionScale = Math.min(devicePixelRatio || 1, IS_TOUCH ? 1.5 : 2);
+  scene.postProcessStages.fxaa.enabled = IS_TOUCH; // render at CSS pixels x a capped scale (not devicePixelRatio x scale, which is ~4.5x on an iPhone and can run Safari out of memory)
+  viewer.useBrowserRecommendedResolution = true; viewer.resolutionScale = Math.min(devicePixelRatio || 1, IS_TOUCH ? 1.5 : 2);
+  scene.maximumRenderTimeChange = Infinity; idle(true);
   scene.camera.frustum.near = 0.5;
   const il = scene.imageryLayers, US = C.Rectangle.fromDegrees(-180, 13, -64, 72);
   try { layers.natural = il.addImageryProvider(await C.TileMapServiceImageryProvider.fromUrl(C.buildModuleUrl('Assets/Textures/NaturalEarthII'))); } catch (e) { console.warn('base imagery', e); }
@@ -68,6 +70,8 @@ async function initWorld() {
   let last = performance.now();
   scene.preUpdate.addEventListener(() => { const now = performance.now(), dt = Math.min(0.1, (now - last) / 1000); last = now; frame(dt); });
 }
+// while a menu is up and nothing is flying, only redraw the globe when something actually changes
+function idle(on) { if (scene) { scene.requestRenderMode = on; if (!on) scene.requestRender(); } }
 function applyMap() {
   const m = opts.map;
   if (layers.sat) layers.sat.show = m !== 'topo';
@@ -173,7 +177,7 @@ $('#setupForm').addEventListener('submit', async e => {
 
 // ---------------------------------------------------------------- start / restart
 async function begin() {
-  show('#setup', false); show('#crash', false); show('#pause', false); show('#loading', true);
+  idle(false); show('#setup', false); show('#crash', false); show('#pause', false); show('#loading', true);
   sim.flying = false; sim.paused = false; sim.crashedShown = false; sim.trail = []; sim.hdgS = null; sim.fly = null; sim.gnd = null; sim.look.yaw = sim.look.pitch = 0;
   origin = { lat: apt.lat, lon: apt.lon };
   const rw = apt.runways[opts.rwy.ri], end = rw.ends[opts.rwy.ei], other = rw.ends[1 - opts.rwy.ei];
@@ -199,7 +203,7 @@ async function begin() {
   const t0 = performance.now();
   await new Promise(res => { const chk = () => { if ((scene.globe.tilesLoaded && performance.now() - t0 > 700) || performance.now() - t0 > 9000) res(); else setTimeout(chk, 120); }; chk(); });
   if (!air) { sim.gnd = g0; const gr = groundAt(lat, lon); s.h = gr + ac.gear[1].z - 0.045; sim.gnd = gr; }
-  show('#loading', false); document.body.classList.add('flying'); sim.flying = true;
+  show('#loading', false); document.body.classList.add('flying'); sim.flying = true; idle(false);
   toast(`${apt.icao || apt.ident} · RWY ${end.name}${sim.env.wind.kt ? ` · Wind ${String(Math.round(sim.env.wind.dir / 10) * 10 || 360).padStart(3, '0')}@${sim.env.wind.kt}${sim.env.gust ? 'G' + (sim.env.wind.kt + 8) : ''}` : ''}`);
   audio.resume();
   if (!w.ok) setTimeout(() => toast('Outside POH limits: ' + w.issues[0]), 2800);
@@ -393,9 +397,9 @@ function act(a) {
     case 'closePhone': show('#phone', false); break;
     case 'recenter': controls.recenter(); toast('Tilt centered'); break;
     case 'restart': if (apt && opts.rwy) begin(); break;
-    case 'setup': sim.paused = true; show('#pause', false); show('#crash', false); show('#setup', true); document.body.classList.remove('flying'); sim.flying = false; audio.suspend(); break;
+    case 'setup': sim.paused = true; show('#pause', false); show('#crash', false); show('#setup', true); document.body.classList.remove('flying'); sim.flying = false; audio.suspend(); idle(true); break;
     case 'exit':
-      audio.suspend(); sim.paused = true;
+      audio.suspend(); sim.paused = true; idle(true);
       if (EMBED) window.parent.postMessage({ type: 'skyhawk:exit' }, '*');
       else { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); location.href = '../#flight-sim'; }
       break;
