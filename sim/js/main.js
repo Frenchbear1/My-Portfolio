@@ -5,7 +5,7 @@ import { STATIONS, compute as wbCompute, defaults as wbDefaults, drawEnvelope } 
 import { createLink } from './link.js?v=2';
 import { createOrient } from './orient.js';
 import { createSlippy } from './slippy.js';
-import { createClouds } from './clouds.js?v=2';
+import { createClouds } from './clouds.js?v=3';
 import { buildAircraftModel } from './model.js?v=2';
 import { createTerrainProvider, elevAsync, elevSync } from './terrain.js?v=3';
 import { findAirport, setBusyHandler } from './airport.js?v=2';

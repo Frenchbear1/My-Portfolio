@@ -131,8 +131,9 @@ same scroll position and unloads the sim.
   and shutoff, trim wheel, flaps, pedals with toe brakes, parking brake) with tach and fuel
   gauges, tilted like a yoke. It links straight to the computer over WebRTC using the free
   PeerJS broker, so no server is needed.
-- **Clouds**: volumetric (ray-marched 3D noise with sun scattering, self-shadowing, flat bases,
-  sunset colour); you can fly into them. Lighter settings on phones.
+- **Clouds**: static 3D cumulus fixed in place in the world, each built from soft overlapping
+  puffs with flat grey bases and sunlit tops. Edges are see-through and they get denser toward the
+  core, so flying in fades to white the deeper you go. Lighter settings on phones.
 - **Engine start**: choose a cold start, then hold I (or the key button, or the phone's key
   at START): the propeller visibly turns over on the starter and catches.
 - **Map**: tap the map for layer, north-up/track-up, range, circle/square and size, and to drop
