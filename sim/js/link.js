@@ -20,7 +20,7 @@ export function createLink({ onState = () => {}, onCmd = () => {} } = {}) {
     peer.on('connection', c => {
       if (conn && conn !== c) try { conn.close(); } catch { /* already closed */ }
       conn = c;
-      c.on('open', () => set('connected'));
+      c.on('open', () => { set('connected'); clearInterval(c._hb); c._hb = setInterval(() => { if (c.open) try { c.send({ t: 'hi' }); } catch { /* closing */ } else clearInterval(c._hb); }, 1000); });
       c.on('data', d => {
         if (!d || d.t !== 'ctl') return;
         ctl = d.c; last = performance.now();

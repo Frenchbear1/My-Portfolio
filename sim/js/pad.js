@@ -174,10 +174,11 @@ function dial() {
   if (!peer || peer.disconnected) return;
   if (conn && conn.open) return;
   $('dot').className = 'wait'; $('msg').textContent = 'Connecting to the simulator…';
-  conn = peer.connect(PREFIX + room, { serialization: 'json', reliable: true });
-  conn.on('open', () => { $('dot').className = 'on'; lastOk = Date.now(); });
-  conn.on('data', d => { if (d && d.t === 'tel') { tel = d.d; lastOk = Date.now(); } });
-  conn.on('close', () => { $('dot').className = ''; $('msg').textContent = 'Lost the simulator. Reconnecting…'; setTimeout(dial, 1500); });
+  const c = conn = peer.connect(PREFIX + room, { serialization: 'json', reliable: true });
+  setTimeout(() => { if (conn === c && !c.open) { try { c.close(); } catch { /* not open */ } conn = null; dial(); } }, 10000);   // a stalled attempt: try again
+  c.on('open', () => { $('dot').className = 'on'; lastOk = Date.now(); $('msg').textContent = 'Connected: press Start on the computer'; });
+  c.on('data', d => { if (!d) return; lastOk = Date.now(); if (d.t === 'tel') { tel = d.d; tel.at = Date.now(); } else if (d.t === 'hi' && (!tel || Date.now() - tel.at > 2000)) { $('dot').className = 'on'; $('msg').textContent = 'Connected: press Start on the computer'; } });
+  c.on('close', () => { if (conn !== c) return; conn = null; $('dot').className = ''; $('msg').textContent = 'Lost the simulator. Reconnecting…'; setTimeout(dial, 1500); });
 }
 function loop() {
   let prev = performance.now();
@@ -185,6 +186,7 @@ function loop() {
     const t0 = performance.now(); engine(Math.min(0.3, (t0 - prev) / 1000)); prev = t0; readTilt();
     if (conn && conn.open) { try { conn.send({ t: 'ctl', c: ctl }); } catch { /* closing */ } }
     if (Date.now() - lastOk > 4000 && conn && conn.open) { $('dot').className = 'wait'; $('msg').textContent = 'Waiting for the simulator…'; }
+    if (Date.now() - lastOk > 12000 && conn && conn.open) { try { conn.close(); } catch { /* closing */ } }   // the computer went away: reconnect
   }, 40);
 }
 function render() {
@@ -202,7 +204,7 @@ function render() {
     }
   }
   $('ann').innerHTML = an.map(([c, x]) => `<span class="an ${c}">${x}</span>`).join('');
-  if (Date.now() - lastOk < 3000 && tel) $('msg').textContent = tel.crashed ? 'MENU → Restart to try again' : engMsg || tel.msg || (tel.onGround ? 'On the ground' : 'Flying');
+  if (Date.now() - lastOk < 3000 && tel && Date.now() - tel.at < 2000) $('msg').textContent = tel.crashed ? 'MENU → Restart to try again' : engMsg || tel.msg || (tel.onGround ? 'On the ground' : 'Flying');
   if (tel && tel.crashed && navigator.vibrate && !render.v) { render.v = 1; navigator.vibrate([120, 60, 200]); } if (tel && !tel.crashed) render.v = 0;
 }
 // ---------- start ----------
@@ -213,7 +215,7 @@ $('go').onclick = async () => {
   try { const d = document.documentElement; if (!iOS && d.requestFullscreen) await d.requestFullscreen().catch(() => {}); screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape').catch(() => {}); } catch { /* optional */ }
   connect(); loop(); render();
 };
-window.__pad = { ctl, sw, get tel() { return tel; } };
+window.__pad = { ctl, sw, get tel() { return tel; }, get conn() { return conn; } };
 // ---------- no zooming (iOS Safari ignores the viewport setting) ----------
 { let lastTap = 0;
   document.addEventListener('touchend', e => { const now = Date.now(); if (now - lastTap < 400) { e.preventDefault(); const b = e.target.closest && e.target.closest('button'); if (b) b.click(); } lastTap = now; }, { passive: false });

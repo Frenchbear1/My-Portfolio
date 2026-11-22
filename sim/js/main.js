@@ -2,7 +2,7 @@
 // CesiumJS (no ion) + free terrain (AWS Terrain Tiles) + USGS imagery + FAA airports and charts.
 import { C172, createState, step, readout, configure, autoTrim, trimmed } from './fdm.js?v=2';
 import { STATIONS, compute as wbCompute, defaults as wbDefaults, drawEnvelope } from './wb.js';
-import { createLink } from './link.js';
+import { createLink } from './link.js?v=2';
 import { buildAircraftModel } from './model.js';
 import { createTerrainProvider, elevAsync, elevSync } from './terrain.js';
 import { findAirport, setBusyHandler } from './airport.js?v=2';
