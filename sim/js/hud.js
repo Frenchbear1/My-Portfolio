@@ -71,10 +71,11 @@ export function createHud(canvas) {
     g.fillStyle = Math.abs(r.slip) > 0.5 ? '#ffc857' : '#fff'; g.beginPath(); g.arc(bx + r.slip * (bw / 2 - 9), by, 7, 0, 7); g.fill();
     // power + trim micro gauges (desktop: under the altitude tape; touch shows its own throttle)
     if (!ui.touch) {
-      const gx = rx + tw / 2, gy = ty + th + 42;
+      const gx = rx + tw / 2, gy = ty + th + 50;
       g.fillStyle = 'rgba(255,255,255,.75)'; g.font = font(700, 11); g.fillText(`${Math.round(r.rpm / 10) * 10} RPM`, gx, gy);
       const bw2 = tw; box(gx - bw2 / 2, gy + 9, bw2, 6, 3); g.fillStyle = 'rgba(255,255,255,.18)'; g.fill(); box(gx - bw2 / 2, gy + 9, bw2 * ui.thr, 6, 3); g.fillStyle = '#5aa9ff'; g.fill();
     }
+    if (ui.fuel != null) { g.fillStyle = ui.fuel < 8 ? '#ffc857' : 'rgba(255,255,255,.75)'; g.font = font(700, 11); g.textAlign = 'center'; g.fillText(`FUEL ${ui.fuel.toFixed(1)}`, ui.touch ? lx + tw / 2 : rx + tw / 2, ui.touch ? ty + th + (small ? 58 : 64) : ty + th + 80); }
     // trim indicator (small vertical bar left of the speed tape)
     const tix = lx + tw + 10, tiy = ty + th * 0.3, tih = th * 0.4;
     g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(tix, tiy, 3, tih); g.fillStyle = '#3ddc84'; g.beginPath(); g.arc(tix + 1.5, tiy + tih / 2 - ui.trim * tih / 2, 5, 0, 7); g.fill();

@@ -21,7 +21,7 @@ body:not(.flying) #hud,body:not(.flying) #bar,body:not(.flying) #touch,body:not(
 #bar[data-sound=off] .wave{display:none}
 .tilt-only{display:none!important}body.tilt .tilt-only{display:grid!important}
 body.touch .kb-only{display:none!important}
-.touch-only{display:none}body.touch .touch-only{display:block}
+body:not(.touch) .touch-only{display:none!important}
 
 /* chips */
 #chips{position:fixed;top:calc(68px + var(--st));left:50%;transform:translateX(-50%);display:flex;gap:6px;z-index:4;pointer-events:none}
@@ -105,6 +105,7 @@ kbd{display:inline-block;min-width:28px;text-align:center;padding:4px 7px;border
 @keyframes sp{to{transform:rotate(360deg)}}
 @media (max-width:520px),(max-height:520px){.card{padding:14px 14px 12px}.hero img{width:110px}.hero h1{font-size:24px}.row{gap:8px}.field{margin-bottom:9px}.seg button{padding:8px 8px;font-size:13px}.apt input{font-size:19px;padding:10px 12px}}
 @media (max-height:520px) and (min-width:600px){
+  .row3{grid-template-columns:1fr 1fr 1fr}
   .card{width:min(860px,100%);padding:12px 16px 12px}
   #setupForm{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));column-gap:14px}
   #setupForm .row{display:contents}
@@ -127,3 +128,38 @@ kbd{display:inline-block;min-width:28px;text-align:center;padding:4px 7px;border
 #rotate svg{width:64px;height:64px;color:var(--ink);animation:rot 2.2s ease-in-out infinite}
 @keyframes rot{0%,20%{transform:rotate(0)}50%,70%{transform:rotate(-90deg)}100%{transform:rotate(0)}}
 @media (prefers-reduced-motion:reduce){.spin{animation-duration:3s}#chips b.red{animation:none}}
+
+/* setup extras */
+.pick{display:flex;align-items:center;gap:8px;width:100%;min-height:40px;padding:8px 12px;border-radius:11px;border:1px solid var(--line);background:rgba(255,255,255,.05);text-align:left;font-weight:700;font-size:14px}
+.pick b{white-space:nowrap}.pick small{margin-left:auto;color:var(--mute);font-weight:600;font-size:12px;white-space:nowrap}
+.pick.ok b{color:#9ff0c0}.pick.bad b{color:#ffb0b0}.pick.ok svg{color:#9ff0c0}
+.pick svg{flex:none}
+.row3{grid-template-columns:1fr 1fr 1fr}
+@media (max-width:520px){.row3{grid-template-columns:1fr}}
+.sheet2{z-index:25}
+.sheet2 h2{margin:0 0 12px;font:700 22px/1.1 Fraunces,Georgia,serif}
+#wb .card{width:min(820px,100%)}
+.wbgrid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:700px){.wbgrid{grid-template-columns:1fr}}
+.wbt{width:100%;border-collapse:collapse;font-size:13px}
+.wbt th{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);text-align:right;padding:4px 4px;font-weight:800}
+.wbt th:first-child,.wbt td:first-child{text-align:left}
+.wbt td{padding:3px 4px;text-align:right;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;border-top:1px solid rgba(255,255,255,.07)}
+.wbt td:first-child{font-family:inherit;font-weight:600}
+.wbt input{width:74px;padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.07);color:var(--ink);font:700 14px ui-monospace,monospace;text-align:right;user-select:text;-webkit-user-select:text}
+.wbt input.arm{width:68px}
+.wbt input:focus{border-color:var(--blue);outline:0}
+.wbt tfoot th{font-size:13px;color:var(--ink);border-top:2px solid var(--line);padding-top:8px;font-family:ui-monospace,monospace;letter-spacing:0;text-transform:none}
+.wbt tfoot th:first-child{font-family:inherit;font-weight:800}
+#wbChart{width:100%;height:190px;display:block;border-radius:12px;background:rgba(0,0,0,.25)}
+.wbstat{margin:8px 0 0;font-weight:700;font-size:14px}.wbstat.ok{color:#9ff0c0}.wbstat.bad{color:#ffb0b0}
+.phonecard{max-width:380px}
+.qr{width:220px;height:220px;border-radius:14px;background:#fff;display:grid;place-items:center;padding:8px}
+.qr svg{width:100%;height:100%}
+.phonestat{display:flex;align-items:center;gap:8px;margin:2px 0 0;font-weight:700}
+#phoneDot{width:10px;height:10px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px currentColor}
+#phoneDot.on{background:#3ddc84}#phoneDot.err{background:var(--red)}
+#padLink{word-break:break-all;color:var(--blue)}
+#hudOff{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);font:800 13px ui-monospace,monospace;letter-spacing:.14em;color:rgba(255,255,255,.55);display:none;pointer-events:none}
+body.pfdoff #hudOff{display:block}body.pfdoff #hud{opacity:0}
+body.mfdoff #minimap{display:none}

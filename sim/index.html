@@ -12,6 +12,7 @@
 <body>
 <div id="globe" aria-label="3D flight view"></div>
 <canvas id="hud" aria-hidden="true"></canvas>
+<div id="hudOff">PFD OFF · MASTER</div>
 <div id="toast" role="status" aria-live="polite"></div>
 
 <!-- compact status chips (icons / short codes, not sentences) -->
@@ -69,9 +70,37 @@
       <div class="field"><span>Map</span><div class="seg" data-opt="map"><button type="button" data-v="sat" class="on">Satellite</button><button type="button" data-v="sectional">Sectional</button><button type="button" data-v="topo">Topo</button></div></div>
       <div class="field touch-only"><span>Steering</span><div class="seg" data-opt="input"><button type="button" data-v="stick" class="on">Joystick</button><button type="button" data-v="tilt">Tilt</button></div></div>
     </div>
+    <div class="row row3">
+      <div class="field"><span>Weight &amp; balance</span><button type="button" class="pick" id="wbBtn"><b id="wbSum">—</b><small id="wbCg"></small></button></div>
+      <div class="field"><span>Auto-trim</span><div class="seg" data-opt="autotrim"><button type="button" data-v="on" class="on">On</button><button type="button" data-v="off">Off</button></div></div>
+      <div class="field"><span>Phone cockpit</span><button type="button" class="pick" id="phoneBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM18 18h3v3h-3zM18 14h3M14 18v3"/></svg><b id="phoneSum">Pair a phone</b></button></div>
+    </div>
     <button type="submit" class="go" id="startBtn" disabled><svg viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></svg><span>Start</span></button>
     <p class="fine">Representative flight model for fun, not training. Imagery: USDA/USGS. Terrain: AWS Terrain Tiles. Airports and charts: FAA.</p>
   </form>
+</div>
+
+<!-- weight and balance -->
+<div id="wb" class="overlay sheet2" role="dialog" aria-modal="true" aria-labelledby="wbTitle">
+  <div class="card glass">
+    <button type="button" class="x" data-act="closeWb" aria-label="Done"><svg viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></svg></button>
+    <h2 id="wbTitle">Weight &amp; balance</h2>
+    <div class="wbgrid"><table class="wbt"><thead><tr><th>Item</th><th>Weight</th><th>Arm</th><th>Moment</th></tr></thead><tbody id="wbRows"></tbody><tfoot><tr><th>Takeoff</th><th id="wbW"></th><th id="wbA"></th><th id="wbM"></th></tr></tfoot></table>
+      <div><canvas id="wbChart" aria-label="CG envelope"></canvas><p id="wbStat" class="wbstat"></p></div></div>
+    <p class="fine">172S POH limits: 2,550 lb max takeoff; CG 35.0–47.3 in (forward limit rises to 41.0 in at 2,550 lb). Utility category (spins approved): 2,200 lb, CG 35.0–40.5 in, nobody in back, no baggage. Arms in inches aft of the firewall. Use your airplane's own empty weight and arm.</p>
+  </div>
+</div>
+
+<!-- phone cockpit pairing -->
+<div id="phone" class="overlay sheet2" role="dialog" aria-modal="true" aria-labelledby="phoneTitle">
+  <div class="card glass small phonecard">
+    <button type="button" class="x" data-act="closePhone" aria-label="Done"><svg viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></svg></button>
+    <h2 id="phoneTitle">Phone cockpit</h2>
+    <div id="qr" class="qr"><div class="spin"></div></div>
+    <p class="phonestat"><i id="phoneDot"></i><span id="phoneMsg">Starting…</span></p>
+    <a id="padLink" class="fine" href="#" target="_blank" rel="noopener"></a>
+    <p class="fine">Scan with your phone's camera, tap Start, hold it sideways like a yoke. The phone becomes the 172S panel: switches, key, throttle, mixture, fuel selector, trim wheel, flaps, rudder and brakes. The flight display stays on this screen.</p>
+  </div>
 </div>
 
 <!-- pause -->
@@ -119,7 +148,7 @@
   window.CESIUM_BASE_URL = base;
   var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = base + 'Widgets/widgets.css'; document.head.appendChild(l);
   var s = document.createElement('script'); s.src = base + 'Cesium.js';
-  s.onload = function () { import('./js/main.js?v=2').catch(function (e) { console.error(e); document.getElementById('aptInfo').textContent = 'Startup error: ' + e.message; }); };
+  s.onload = function () { import('./js/main.js?v=3').catch(function (e) { console.error(e); document.getElementById('aptInfo').textContent = 'Startup error: ' + e.message; }); };
   s.onerror = function () { document.getElementById('aptInfo').textContent = 'Could not load the 3D engine. Check your connection.'; };
   document.head.appendChild(s);
 })();

@@ -1,11 +1,13 @@
 // Fly the Skyhawk: a compact hand-flown Cessna 172S simulator on a real 3D globe.
 // CesiumJS (no ion) + free terrain (AWS Terrain Tiles) + USGS imagery + FAA airports and charts.
-import { C172, createState, step, readout } from './fdm.js';
+import { C172, createState, step, readout, configure, autoTrim, trimmed } from './fdm.js?v=2';
+import { STATIONS, compute as wbCompute, defaults as wbDefaults, drawEnvelope } from './wb.js';
+import { createLink } from './link.js';
 import { buildAircraftModel } from './model.js';
 import { createTerrainProvider, elevAsync, elevSync } from './terrain.js';
 import { findAirport, setBusyHandler } from './airport.js?v=2';
 import { createControls } from './controls.js';
-import { createHud, createMinimap, createAudio } from './hud.js';
+import { createHud, createMinimap, createAudio } from './hud.js?v=2';
 
 const C = window.Cesium, D2R = Math.PI / 180, R2D = 180 / Math.PI, FT = 0.3048, KT = 0.514444, RE = 6371000;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v), angDiff = (a, b) => ((b - a + 540) % 360) - 180;
@@ -18,7 +20,9 @@ document.body.classList.toggle('touch', IS_TOUCH);
 
 // ---------------------------------------------------------------- state
 const sim = { flying: false, paused: false, crashedShown: false, cam: 'chase', look: { yaw: 0, pitch: 0, drag: false }, trail: [], trailT: 0, hdgS: null, fly: null, gnd: null, toastT: 0, lastMsg: '', miniT: 0 };
-const opts = Object.assign({ icao: 'KLYH', rwy: null, start: 'runway', time: 'day', sky: 'few', wind: 'calm', map: 'sat', input: 'stick' }, (() => { try { return JSON.parse(localStorage.getItem('skyhawk-setup') || '{}'); } catch { return {}; } })());
+const opts = Object.assign({ icao: 'KLYH', rwy: null, start: 'runway', time: 'day', sky: 'few', wind: 'calm', map: 'sat', input: 'stick', autotrim: 'on' }, (() => { try { return JSON.parse(localStorage.getItem('skyhawk-setup') || '{}'); } catch { return {}; } })());
+if (!opts.wb || typeof opts.wb !== 'object') opts.wb = wbDefaults();
+let ac = C172, at = {}, elec = { bat: true, alt: true, avn: true, lights: { nav: true, bcn: true, strobe: true, land: false, taxi: false } }, wbFuel = 0, telT = 0;
 let apt = null, s = null, origin = null, viewer, scene, model, meta, lights, rwyLights, clouds, layers = {};
 
 // ---------------------------------------------------------------- world
@@ -59,7 +63,7 @@ async function initWorld() {
   model = await C.Model.fromGltfAsync({ url: URL.createObjectURL(new Blob([meta.glb], { type: 'model/gltf-binary' })), show: false, incrementallyLoadTextures: false, enableVerticalExaggeration: false });
   scene.primitives.add(model);
   lights = scene.primitives.add(new C.PointPrimitiveCollection());
-  for (let i = 0; i < 5; i++) lights.add({ pixelSize: 5, color: C.Color.WHITE, show: false, scaleByDistance: new C.NearFarScalar(30, 1.6, 2e4, 0.6) });
+  for (let i = 0; i < 6; i++) lights.add({ pixelSize: 5, color: C.Color.WHITE, show: false, scaleByDistance: new C.NearFarScalar(30, 1.6, 2e4, 0.6) });
   rwyLights = scene.primitives.add(new C.PointPrimitiveCollection());
   let last = performance.now();
   scene.preUpdate.addEventListener(() => { const now = performance.now(), dt = Math.min(0.1, (now - last) / 1000); last = now; frame(dt); });
@@ -181,20 +185,24 @@ async function begin() {
   setTime(opts.time); setSky(opts.sky); applyMap(); buildRunwayLights();
   const withTimeout = (p, ms, v) => Promise.race([p.catch(() => v), new Promise(r => setTimeout(() => r(v), ms))]);
   const g0 = await withTimeout(elevAsync(lat, lon, 13), 5000, apt.elevFt * FT);
-  const gh = air ? apt.elevFt * FT + 1000 * FT : g0 + C172.gear[1].z - 0.045;
+  const w = wbCompute(opts.wb); ac = configure(w.lb, w.cg); wbFuel = +opts.wb.fuel || 0; at = {};
+  const gh = air ? apt.elevFt * FT + 1000 * FT : g0 + ac.gear[1].z - 0.045;
   const [n, e] = toNE(lat, lon);
-  s = createState({ n, e, h: gh, hdg, kt: air ? 90 : 0, onGround: !air });
-  if (air) { s.pw = 0.55; s.w = s.u * 0.033; }
-  controls.reset(air ? { thr: 0.55, trim: -0.08 } : { thr: 0 });
+  s = createState({ n, e, h: gh, hdg, kt: air ? 90 : 0, onGround: !air, fuelGal: wbFuel });
+  // trim for 90 kt at this weight and CG (elevator angle that balances the pitching moment)
+  const q90 = 0.5 * 1.18 * (90 * KT) ** 2, a90 = (ac.m * 9.81 / (q90 * ac.S) - ac.CL0 - ac.dCLcg) / ac.CLa, trim90 = clamp(-((ac.Cm0 + ac.Cma * a90) / -ac.Cmde) / (9 * D2R), -1, 1);
+  if (air) { s.pw = 0.55; s.w = s.u * a90; }
+  controls.reset(air ? { thr: 0.55, trim: trim90 } : { thr: 0 });
   controls.st.flaps = 0; updateFlapInd();
   sim.cam = 'chase'; model.show = true; placeModel(); updateCamera(0.016);
   // let the terrain and imagery under the aircraft stream in before the clock starts
   const t0 = performance.now();
   await new Promise(res => { const chk = () => { if ((scene.globe.tilesLoaded && performance.now() - t0 > 700) || performance.now() - t0 > 9000) res(); else setTimeout(chk, 120); }; chk(); });
-  if (!air) { sim.gnd = g0; const gr = groundAt(lat, lon); s.h = gr + C172.gear[1].z - 0.045; sim.gnd = gr; }
+  if (!air) { sim.gnd = g0; const gr = groundAt(lat, lon); s.h = gr + ac.gear[1].z - 0.045; sim.gnd = gr; }
   show('#loading', false); document.body.classList.add('flying'); sim.flying = true;
   toast(`${apt.icao || apt.ident} · RWY ${end.name}${sim.env.wind.kt ? ` · Wind ${String(Math.round(sim.env.wind.dir / 10) * 10 || 360).padStart(3, '0')}@${sim.env.wind.kt}${sim.env.gust ? 'G' + (sim.env.wind.kt + 8) : ''}` : ''}`);
   audio.resume();
+  if (!w.ok) setTimeout(() => toast('Outside POH limits: ' + w.issues[0]), 2800);
 }
 function show(sel, on) { $(sel).classList.toggle('on', on); }
 
@@ -214,13 +222,16 @@ function placeModel() {
   pos = C.Cartesian3.fromDegrees(lon, lat, s.h, C.Ellipsoid.WGS84, pos);
   hpr.heading = r.hdg * D2R; hpr.pitch = r.pitch * D2R; hpr.roll = r.bank * D2R;
   M = C.Transforms.headingPitchRollToFixedFrame(pos, hpr, C.Ellipsoid.WGS84, NWU, scratchM);
+  if (ac.dx) C.Matrix4.multiplyByTranslation(M, new C.Cartesian3(-ac.dx, 0, 0), M);    // physics runs about the loaded CG; the model's origin is the reference CG
   model.modelMatrix = C.Matrix4.clone(M, model.modelMatrix);
   model.show = sim.cam !== 'cockpit';
   if (s.surf) applySurfaces(s.surf);
   const T = meta.tips, t = performance.now() / 1000, night = opts.time !== 'day';
   const P = (v, i, col, on) => { const p = lights.get(i); p.position = C.Matrix4.multiplyByPoint(M, new C.Cartesian3(v[0], v[1], v[2]), new C.Cartesian3()); p.color = col; p.show = on && sim.cam !== 'cockpit'; p.pixelSize = night ? 6 : 4; };
-  P(T.left, 0, C.Color.RED, true); P(T.right, 1, C.Color.LIME, true); P(T.tail, 2, C.Color.WHITE, true);
-  P(T.top, 3, C.Color.RED, t % 1.2 < 0.12); P(T.belly, 4, C.Color.WHITE, t % 1.5 < 0.06 || (t + 0.2) % 1.5 < 0.06);
+  const L = elec.lights, pwr = elec.bat || (elec.alt && s.running);
+  P(T.left, 0, C.Color.RED, pwr && L.nav); P(T.right, 1, C.Color.LIME, pwr && L.nav); P(T.tail, 2, C.Color.WHITE, pwr && L.nav);
+  P(T.top, 3, C.Color.RED, pwr && L.bcn && t % 1.2 < 0.12); P(T.belly, 4, C.Color.WHITE, pwr && L.strobe && (t % 1.5 < 0.06 || (t + 0.2) % 1.5 < 0.06));
+  P([2.1, 0, -0.35], 5, C.Color.fromCssColorString('#fff6d8'), pwr && (L.land || L.taxi)); lights.get(5).pixelSize = L.land ? 13 : 9;
   return { lat, lon, r };
 }
 const surfCache = {};
@@ -276,28 +287,81 @@ const chipsEl = $('#chips'); let chipsKey = '';
 function frame(dt) {
   if (!s || !model) return;
   if (sim.flying && !sim.paused) {
-    const c = controls.update(dt), [lat, lon] = toLL(s.n, s.e);
+    let c = controls.update(dt); const [lat, lon] = toLL(s.n, s.e);
+    if (link.active) c = padControls(link.ctl, c); else { c = { ...c, eng: true, ign: 3, mx: 1, sel: 'B', shutoff: false }; elec = ELEC_ON; }
+    if (opts.autotrim === 'on') { autoTrim(s, c, at, dt); c = trimmed(c, at); }
     let g = groundAt(lat, lon); if (sim.gnd != null) g = sim.gnd + clamp(g - sim.gnd, -30 * dt, 30 * dt); sim.gnd = g;
-    for (let k = 0; k < (sim.timeScale || 1); k++) step(s, c, dt, { ground: g, wind: sim.env.wind, gust: sim.env.gust });   // timeScale: test hook
+    for (let k = 0; k < (sim.timeScale || 1); k++) step(s, c, dt, { ground: g, wind: sim.env.wind, gust: sim.env.gust }, ac);   // timeScale: test hook
+    // fuel burned changes the weight and CG
+    const fuel = s.fuelL + s.fuelR; if (Math.abs(fuel - wbFuel) > 0.25) { wbFuel = fuel; const w = wbCompute(opts.wb, fuel); ac = configure(w.lb, w.cg); }
   }
   const { lat, lon, r } = placeModel();
   if (sim.flying) updateCamera(dt);
   if (!sim.flying) return;
-  hud.draw(r, { touch: IS_TOUCH, thr: controls.st.thr, trim: controls.st.trim, cam: sim.cam });
+  const pfd = elec.bat || (elec.alt && s.running);
+  document.body.classList.toggle('pfdoff', !pfd); document.body.classList.toggle('mfdoff', !pfd || !elec.avn);
+  hud.draw(r, { touch: IS_TOUCH, thr: controls.st.thr, trim: clamp(controls.st.trim + (opts.autotrim === 'on' ? (at.pt || 0) : 0), -1, 1), cam: sim.cam, fuel: s.fuelL + s.fuelR });
   audio.update(r, sim.paused);
   // status chips
   const chips = [];
   if (r.spin) chips.push(['SPIN', 'red']); else if (r.warn) chips.push(['STALL', 'red']);
   if (r.overspeed) chips.push(['VNE', 'red']); if (r.overG) chips.push(['G', 'red']);
-  if (controls.st.brk) chips.push(['BRK', 'amber']);
+  if (controls.st.brk || (link.active && (link.ctl.brkL || link.ctl.brkR))) chips.push(['BRK', 'amber']);
+  if (!s.running && !s.crashed) chips.push(['ENG', 'red']); else if (s.fuelL + s.fuelR < 8) chips.push(['FUEL', 'amber']);
   if (sim.env.wind.kt && sim.cam) chips.push([`${String(Math.round(sim.env.wind.dir / 10) * 10 || 360).padStart(3, '0')}/${sim.env.wind.kt}`, '']);
   const key = chips.map(c => c.join()).join('|'); if (key !== chipsKey) { chipsKey = key; chipsEl.innerHTML = chips.map(([t, c]) => `<b class="${c}">${t}</b>`).join(''); }
   if (s.msg && s.msg !== sim.lastMsg) { sim.lastMsg = s.msg; toast(s.msg); setTimeout(() => { if (sim.lastMsg === s.msg) { s.msg = ''; sim.lastMsg = ''; } }, 2500); }
   const now = performance.now();
   if (now - sim.trailT > 1500) { sim.trailT = now; sim.trail.push([lat, lon]); if (sim.trail.length > 500) sim.trail.shift(); }
   if (now - sim.miniT > 150 && !$('#minimap').classList.contains('off')) { sim.miniT = now; minimap.draw(lat, lon, r.hdg, sim.trail.concat([[lat, lon]]), apt.runways); }
+  if (now - telT > 180) { telT = now; link.send({ rpm: Math.round(s.rpm), fuelL: s.fuelL, fuelR: s.fuelR, flap: s.flap, onGround: s.onGround, warn: r.warn, crashed: s.crashed, paused: sim.paused, msg: s.msg, starved: s.starved, noFuel: s.starveT > 0.5 }); }
   if (s.crashed && !sim.crashedShown) { sim.crashedShown = true; setTimeout(() => { $('#crashWhy').textContent = s.crashed; show('#crash', true); }, 1300); }
 }
+
+// ---------------------------------------------------------------- phone cockpit
+const ELEC_ON = { bat: true, alt: true, avn: true, lights: { nav: true, bcn: true, strobe: true, land: false, taxi: false } };
+function padControls(p, kb) {
+  elec = { bat: !!p.bat, alt: !!p.alt, avn: !!p.avn, lights: p.lights || ELEC_ON.lights };
+  const park = p.park ? 1 : 0, brk = Math.max(park, p.brkL || 0, p.brkR || 0, kb.brk);
+  if (controls.st.flaps !== p.fl) { controls.st.flaps = p.fl; updateFlapInd(); }
+  controls.st.thr = p.th; controls.st.trim = p.pt; controls.st.brk = brk;
+  return { de: clamp(p.e + kb.de, -1, 1), da: clamp(p.a + kb.da, -1, 1), dr: clamp(p.r + kb.dr, -1, 1), thr: p.th, mx: p.mx, flaps: p.fl, brk, brkDiff: park ? 0 : (p.brkR || 0) - (p.brkL || 0), trim: p.pt, ign: p.ign, eng: p.eng, sel: p.sel, shutoff: p.shutoff };
+}
+const link = createLink({
+  onState(st, detail) {
+    const msg = { starting: 'Starting…', waiting: 'Waiting for your phone', connected: 'Phone connected', error: detail || 'Pairing error' }[st] || st;
+    $('#phoneMsg').textContent = msg; $('#phoneDot').className = st === 'connected' ? 'on' : st === 'error' ? 'err' : '';
+    $('#phoneSum').textContent = st === 'connected' ? 'Phone connected' : 'Pair a phone'; $('#phoneBtn').classList.toggle('ok', st === 'connected');
+    if (st === 'waiting' || st === 'connected') { $('#qr').innerHTML = link.qrSvg(); const a = $('#padLink'); a.href = a.textContent = link.url(); }
+    if (st === 'connected') { toast('Phone cockpit connected'); if ($('#phone').classList.contains('on') && sim.flying) setTimeout(() => act('closePhone'), 900); }
+  },
+  onCmd(t) {
+    if (t === 'cam') act('cam'); else if (t === 'pause') act(sim.paused ? 'resume' : 'pause');
+    else if (t.startsWith('restart')) { opts.start = t === 'restart-air' ? 'pattern' : 'runway'; syncSeg('start'); show('#setup', false); act('restart'); }
+  },
+});
+$('#phoneBtn').onclick = () => { show('#phone', true); link.start(); };
+
+// ---------------------------------------------------------------- weight & balance sheet
+function wbUi() {
+  const w = wbCompute(opts.wb), sum = $('#wbBtn');
+  $('#wbSum').textContent = `${Math.round(w.lb).toLocaleString()} lb`; $('#wbCg').textContent = `CG ${w.cg.toFixed(1)} · ${w.ok ? (w.utility ? 'Utility' : 'Normal') : 'Out of limits'}`;
+  sum.classList.toggle('ok', w.ok); sum.classList.toggle('bad', !w.ok);
+  if (!$('#wb').classList.contains('on')) return;
+  for (const st of STATIONS) {
+    const v = +opts.wb[st.k] || 0, lb = st.lbPer ? v * st.lbPer : v, arm = st.k === 'empty' ? +opts.wb.emptyArm || st.arm : st.arm;
+    $(`#wbm-${st.k}`).textContent = (lb * arm / 1000).toFixed(1); if (st.lbPer) $(`#wbl-${st.k}`).textContent = `${Math.round(lb)} lb`;
+  }
+  $('#wbW').textContent = `${Math.round(w.lb)} lb`; $('#wbA').textContent = w.cg.toFixed(1); $('#wbM').textContent = (w.mom / 1000).toFixed(1);
+  const stat = $('#wbStat'); stat.className = 'wbstat ' + (w.ok ? 'ok' : 'bad');
+  stat.textContent = w.ok ? `Within limits · ${w.utility ? 'Utility category: spins approved' : 'Normal category (spins not approved)'}` : w.issues.join(' · ');
+  drawEnvelope($('#wbChart'), opts.wb);
+}
+function buildWb() {
+  $('#wbRows').innerHTML = STATIONS.map(st => `<tr><td>${st.label}</td><td><input type="number" inputmode="decimal" min="0" ${st.k === 'empty' ? '' : `max="${st.max}"`} step="${st.lbPer ? 1 : 5}" id="wbi-${st.k}" value="${opts.wb[st.k] ?? st.def}" aria-label="${st.label} (${st.unit})"> ${st.unit === 'gal' ? 'gal' : ''}${st.lbPer ? `<br><small id="wbl-${st.k}"></small>` : ''}</td><td>${st.editArm ? `<input class="arm" type="number" inputmode="decimal" step="0.1" id="wbi-emptyArm" value="${opts.wb.emptyArm ?? st.arm}" aria-label="Empty weight arm (in)">` : st.arm.toFixed(1)}</td><td id="wbm-${st.k}"></td></tr>`).join('');
+  $$('#wbRows input').forEach(inp => inp.addEventListener('input', () => { const k = inp.id.slice(4), st = STATIONS.find(x => x.k === k); let v = +inp.value || 0; if (st && st.k !== 'empty') v = clamp(v, 0, st.max); opts.wb[k] = v; wbUi(); }));
+}
+$('#wbBtn').onclick = () => { buildWb(); show('#wb', true); wbUi(); };
 
 // ---------------------------------------------------------------- actions
 let toastTimer = 0;
@@ -313,7 +377,7 @@ function act(a) {
   switch (a) {
     case 'pause': if (helpOpen) return act('closeHelp'); pause(!sim.paused); break;
     case 'resume': pause(false); break;
-    case 'escape': if (helpOpen) act('closeHelp'); else if ($('#setup').classList.contains('on')) { if (sim.flying) { show('#setup', false); pause(true); } else act('exit'); } else if (sim.flying) pause(!sim.paused); break;
+    case 'escape': if ($('#wb').classList.contains('on')) act('closeWb'); else if ($('#phone').classList.contains('on')) act('closePhone'); else if (helpOpen) act('closeHelp'); else if ($('#setup').classList.contains('on')) { if (sim.flying) { show('#setup', false); pause(true); } else act('exit'); } else if (sim.flying) pause(!sim.paused); break;
     case 'cam': sim.cam = CAMS[(CAMS.indexOf(sim.cam) + 1) % CAMS.length]; sim.fly = null; sim.hdgS = null; toast({ chase: 'Chase view', cockpit: 'Cockpit view', flyby: 'Fly-by view' }[sim.cam]); break;
     case 'flapsDown': controls.st.flaps = Math.min(3, controls.st.flaps + 1); updateFlapInd(); break;
     case 'flapsUp': controls.st.flaps = Math.max(0, controls.st.flaps - 1); updateFlapInd(); break;
@@ -323,6 +387,8 @@ function act(a) {
     case 'sound': audio.on = !audio.on; $('#bar').dataset.sound = audio.on ? 'on' : 'off'; if (!audio.on) audio.suspend(); break;
     case 'help': if (!sim.flying) return; show('#help', !helpOpen); if (!helpOpen && !sim.paused) { sim.helpPaused = true; sim.paused = true; } break;
     case 'closeHelp': show('#help', false); if (sim.helpPaused) { sim.helpPaused = false; sim.paused = false; } break;
+    case 'closeWb': show('#wb', false); try { localStorage.setItem('skyhawk-setup', JSON.stringify(opts)); } catch { /* private */ } wbUi(); break;
+    case 'closePhone': show('#phone', false); break;
     case 'recenter': controls.recenter(); toast('Tilt centered'); break;
     case 'restart': if (apt && opts.rwy) begin(); break;
     case 'setup': sim.paused = true; show('#pause', false); show('#crash', false); show('#setup', true); document.body.classList.remove('flying'); sim.flying = false; audio.suspend(); break;
@@ -351,4 +417,5 @@ else $('#minimap').width = $('#minimap').height = 300;
 await initWorld();
 icao.value = opts.icao || ''; if (icao.value) lookup();
 setTimeout(() => { if (!IS_TOUCH) icao.focus({ preventScroll: true }); }, 300);
-window.__sim = { sim, opts, get s() { return s; }, get apt() { return apt; }, act, readout: () => s && readout(s), viewer: () => viewer, controls };
+wbUi();
+window.__sim = { link, get ac() { return ac; }, get elec() { return elec; }, sim, opts, get s() { return s; }, get apt() { return apt; }, act, readout: () => s && readout(s), viewer: () => viewer, controls };

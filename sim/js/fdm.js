@@ -12,7 +12,7 @@ const sig = x => 1 / (1 + Math.exp(-x));
 /** Airframe constants (SI). Body axes: x forward, y right, z down, origin at the CG. */
 export const C172 = {
   name: 'Cessna 172S Skyhawk', m: 1043, S: 16.17, b: 10.92, c: 1.494, Ixx: 1285, Iyy: 1825, Izz: 2667,
-  P: 134e3, eta: 0.72, Tstatic: 1950, vne: 163, vno: 129, vfe: [163, 110, 85, 85], flapDeg: [0, 10, 20, 30],
+  P: 134e3, eta: 0.72, Tstatic: 2250, vne: 163, vno: 129, vfe: [163, 110, 85, 85], flapDeg: [0, 10, 20, 30],
   // aerodynamic coefficients
   CL0: 0.31, CLa: 5.14, CLq: 3.9, CLde: 0.43, CD0: 0.034, k: 0.054,
   Cm0: 0.045, Cma: -0.89, Cmq: -12.4, Cmde: -1.28,
@@ -32,6 +32,51 @@ export const C172 = {
     { x: 2.05, y: 0, z: 0.96, what: 'Prop strike' }, { x: -5.6, y: 0, z: 0.0, what: 'Tail strike', soft: 0.25 }, { x: 0.2, y: 0, z: 0.7, what: 'Belly landing' },
   ],
 };
+
+/**
+ * The airframe as loaded: weight (lb) and CG (inches aft of the datum, the firewall). Heavier means
+ * more mass and inertia (longer ground roll, higher stall and lift-off speeds, slower response).
+ * The CG moves the pitch stability: forward CG is stiff and nose-heavy (more elevator to flare,
+ * stall speed up a little); aft CG is light and twitchy, and past the aft limit it gets close to
+ * neutral stability and the spin is harder to stop. The reference airframe is 2,300 lb at 41.0 in.
+ */
+export function configure(lb, cgIn, base = C172) {
+  const m = lb * 0.45359237, k = m / base.m, dx = (cgIn - 41.0) * 0.0254, dxc = dx / base.c;
+  return { ...base, m, Ixx: base.Ixx * (0.55 + 0.45 * k), Iyy: base.Iyy * (0.6 + 0.4 * k), Izz: base.Izz * (0.55 + 0.45 * k), lb, cgIn, dx,
+    Cm0: base.Cm0 + base.CL0 * dxc, Cma: base.Cma + base.CLa * dxc, dCLcg: 0.35 * dxc, spinRec: clamp(1 - 7 * Math.max(0, dxc - 0.05), 0.15, 1),
+    gear: base.gear.map(g => ({ ...g, x: g.x + dx })), hard: base.hard.map(h => ({ ...h, x: h.x + dx })) };
+}
+
+/**
+ * Auto-trim, run by the caller each frame: slowly trims out held elevator pressure and pitch rate,
+ * and centres the slip ball with rudder trim. It stays out of the way near the stall and whenever
+ * rudder is being used, so a deliberately uncoordinated stall still drops a wing and spins.
+ * t = { pt, rt } trim offsets (-1..1), mutated and returned.
+ */
+export function autoTrim(s, c, t, dt) {
+  t.pt ??= 0; t.rt ??= 0; t.ai ??= 0; t.damp = 0; t.ad = 0; t.rd = 0;
+  if (s.crashed) return t;
+  if (s.onGround) { t.rt += -t.rt * Math.min(1, dt * 2); t.ai = 0; t.ref = null; t.bank = null; return t; }
+  if (s.stall > 0.2 || s.warn) { t.ref = null; t.bank = null; return t; }
+  const e = eulerFromQ(s.q);
+  // pitch: trim follows held elevator; once released, hold the attitude where the nose settled
+  if (Math.abs(c.de) > 0.08) { t.ref = null; t.pt += 0.25 * c.de * dt; }
+  else {
+    if (t.ref == null || Math.abs(s.qr) > 0.04 && !t.locked) { t.ref = clamp(e.th, -12 * D2R, 15 * D2R); t.locked = false; } else t.locked = true;
+    if (s.ias < 68 && t.ref > -2 * D2R) t.ref -= (68 - s.ias) * 0.0012 * dt * 60 * D2R;   // getting slow: let the nose come down
+    t.pt += 2.2 * (t.ref - e.th) * dt; t.damp = clamp(-1.8 * s.qr, -0.35, 0.35);
+  }
+  t.pt = clamp(t.pt, -1, 1);
+  // roll: once the ailerons are released, hold that bank (trims out torque and the slow spiral)
+  if (Math.abs(c.da) > 0.08) t.bank = null;
+  else { if (t.bank == null && Math.abs(s.p) < 0.05) t.bank = e.phi; t.ad = clamp(-0.35 * s.p, -0.2, 0.2); if (t.bank != null) t.ai = clamp(t.ai + 0.4 * (t.bank - e.phi) * dt, -0.25, 0.25); }
+  // rudder: centre the ball (a slow trim plus a direct slip term, which also damps the Dutch roll)
+  t.rd = 0;
+  if (Math.abs(c.dr) < 0.12) { t.rt = clamp(t.rt + 0.8 * s.beta * dt, -0.5, 0.5); t.rd = clamp(4 * s.beta, -0.35, 0.35); }
+  return t;
+}
+/** Controls with the auto-trim applied. */
+export function trimmed(c, t) { return { ...c, trim: clamp((c.trim || 0) + t.pt + t.damp, -1, 1), da: clamp(c.da + t.ai + t.ad, -1, 1), rtrim: t.rt + t.rd }; }
 
 // ---------- quaternion helpers (body -> NED) ----------
 function qmul(a, b) {
@@ -63,11 +108,12 @@ const rhoAt = h => 1.225 * Math.pow(Math.max(0.2, 1 - 2.25577e-5 * h), 4.2559);
  * New state. n/e are metres north/east of the caller's origin, h is metres (same datum as the ground
  * heights the caller supplies). Heading in degrees true. kt = true airspeed if airborne.
  */
-export function createState({ n = 0, e = 0, h, hdg = 0, kt = 0, pitchDeg = 0, onGround = true }) {
+export function createState({ n = 0, e = 0, h, hdg = 0, kt = 0, pitchDeg = 0, onGround = true, fuelGal = 53 }) {
   const psi = hdg * D2R, th = pitchDeg * D2R;
   return { n, e, h, q: qFromEuler(0, th, psi), u: kt * KT * Math.cos(th), v: 0, w: kt * KT * Math.sin(th) * 0, p: 0, qr: 0, r: 0,
     pw: onGround ? 0.1 : 0.6, flap: 0, t: 0, crashed: null, msg: '', onGround, alpha: 0, beta: 0, nz: 1, stall: 0, warn: false, rpm: 700,
-    vn: 0, ve: 0, vd: 0, lastSink: 0, gearLoad: [0, 0, 0], spin: 0, buffet: 0, _rand: 0 };
+    vn: 0, ve: 0, vd: 0, lastSink: 0, gearLoad: [0, 0, 0], spin: 0, buffet: 0, _rand: 0,
+    fuelL: fuelGal / 2, fuelR: fuelGal / 2, starveT: 0, starved: false, running: true };
 }
 
 /**
@@ -95,33 +141,44 @@ function sub(s, c, dt, env, ac) {
   const alpha = V > 2 ? Math.atan2(wa, ua) : 0, beta = V > 2 ? Math.asin(clamp(va / V, -1, 1)) : 0;
   const qbar = 0.5 * rho * V * V;
   // --- engine (180 hp Lycoming, fixed-pitch prop) ---
-  const thr = clamp(c.thr, 0, 1);
-  s.pw += clamp(thr - s.pw, -dt / 0.6, dt / 0.8);
+  const thr = clamp(c.thr, 0, 1), mx = c.mx ?? 1, ign = c.ign ?? 3;
+  // fuel: the selector feeds LEFT, RIGHT or BOTH tanks; no flow for a few seconds starves the engine
+  const sel = c.shutoff ? 'OFF' : (c.sel || 'B');
+  const canL = s.fuelL > 0.05 && (sel === 'L' || sel === 'B'), canR = s.fuelR > 0.05 && (sel === 'R' || sel === 'B');
+  if (canL || canR) { s.starveT = Math.max(0, s.starveT - dt * 2); if (s.starveT === 0) s.starved = false; } else if ((s.starveT += dt) > 6) s.starved = true;
+  s.running = c.eng !== false && !s.starved && mx >= 0.08 && ign > 0;
+  const ideal = clamp(1 - (s.h / FT) / 26000, 0.35, 1), mix = clamp(1 - 2.4 * (mx - ideal) ** 2, 0.55, 1) * (ign === 1 || ign === 2 ? 0.96 : 1);
+  s.pw += clamp((s.running ? thr * mix : 0) - s.pw, -dt / 0.6, dt / 0.8);
+  if (s.running) {
+    const gph = 1.6 + 10.5 * s.pw * (0.7 + 0.3 * mx), burn = gph / 3600 * dt;
+    if (canL && canR) { s.fuelL -= burn / 2; s.fuelR -= burn / 2; } else if (canL) s.fuelL -= burn; else if (canR) s.fuelR -= burn;
+    s.fuelL = Math.max(0, s.fuelL); s.fuelR = Math.max(0, s.fuelR);
+  }
   const Pavail = ac.P * s.pw * Math.pow(sg, 1.1);
-  let T = s.pw * Math.pow(sg, 1.1) * Math.min(ac.Tstatic, ac.eta * ac.P / Math.max(V, 1));
+  let T = s.pw * Math.pow(sg, 1.1) * Math.min(ac.Tstatic - 8 * V, ac.eta * ac.P / Math.max(V, 1));
   T -= 0.002 * qbar * ac.S * (1 - s.pw);                         // windmilling prop drag at idle
-  s.rpm += ((650 + 2050 * s.pw + 9 * Math.max(0, V - 30) * (1 - 0.4 * s.pw)) - s.rpm) * Math.min(1, dt * 3);
+  s.rpm += ((s.running ? 650 + 2050 * s.pw + 9 * Math.max(0, V - 30) * (1 - 0.4 * s.pw) : Math.max(0, 15 * (V - 22))) - s.rpm) * Math.min(1, dt * (s.running ? 3 : 1.2));
   // --- flaps (motor runs ~2.5 s per notch) ---
   const fl = clamp(Math.round(c.flaps), 0, 3); s.flap += clamp(fl - s.flap, -dt / 2.5, dt / 2.5);
   const fi = Math.min(2, Math.floor(s.flap)), ff = s.flap - fi, lerpF = arr => arr[fi] + (arr[fi + 1] - arr[fi]) * ff;
   const dCLf = lerpF(ac.flapCL), dCDf = lerpF(ac.flapCD), dCmf = lerpF(ac.flapCm), aS = ac.aStall + lerpF(ac.flapStall) * D2R;
   // --- surfaces ---
   const de = -clamp(c.de, -1, 1) * (c.de > 0 ? 28 : 23) * D2R - clamp(c.trim || 0, -1, 1) * 9 * D2R;   // + = trailing edge down
-  const da = clamp(c.da, -1, 1) * 19 * D2R, dr = clamp(c.dr, -1, 1) * 24 * D2R;
-  s.surf = { elev: clamp(c.de, -1, 1), ail: clamp(c.da, -1, 1), rud: clamp(c.dr, -1, 1), flap: s.flap * 10 };
+  const drIn = clamp(c.dr + (s.onGround ? 0 : c.rtrim || 0), -1, 1), da = clamp(c.da, -1, 1) * 19 * D2R, dr = drIn * 24 * D2R;
+  s.surf = { elev: clamp(c.de + (c.trim || 0) * 0.3, -1, 1), ail: clamp(c.da, -1, 1), rud: drIn, flap: s.flap * 10 };
   // --- aerodynamics ---
   const ph = s.p * ac.b / (2 * Vs), qh = s.qr * ac.c / (2 * Vs), rh = s.r * ac.b / (2 * Vs);
   const sigma = Math.max(sig((alpha - aS) / 0.022), sig((-alpha - 0.2) / 0.022));        // 0 attached .. 1 fully stalled
-  const CLlin = ac.CL0 + ac.CLa * alpha + dCLf + ac.CLq * qh + ac.CLde * de;
-  const CLmax = ac.CL0 + ac.CLa * aS + dCLf, CLpost = alpha > 0 ? Math.max(1.12 * Math.sin(2 * alpha) + 0.3 * dCLf, CLmax * (0.8 - 1.1 * (alpha - aS))) : 1.12 * Math.sin(2 * alpha);
+  const CLlin = ac.CL0 + (ac.dCLcg || 0) + ac.CLa * alpha + dCLf + ac.CLq * qh + ac.CLde * de;
+  const CLmax = ac.CL0 + (ac.dCLcg || 0) + ac.CLa * aS + dCLf, CLpost = alpha > 0 ? Math.max(1.12 * Math.sin(2 * alpha) + 0.3 * dCLf, CLmax * (0.8 - 1.1 * (alpha - aS))) : 1.12 * Math.sin(2 * alpha);
   const CL = (1 - sigma) * CLlin + sigma * CLpost;
   const CD = ac.CD0 + dCDf + (1 - sigma) * ac.k * CLlin * CLlin + sigma * (1.3 * Math.sin(alpha) ** 2 + 0.08) + 0.25 * beta * beta;
   const CY = ac.CYb * beta - ac.CYdr * dr;
   // the wing that is stalled deeper loses lift and its drag rises: roll damping turns into autorotation
   const ClpE = ac.Clp * (1 - 0.8 * sigma), ClrE = ac.Clr + 0.45 * sigma, CnrE = ac.Cnr * (1 - 0.45 * sigma);
   let Cl = (ac.Clb - 0.32 * sigma) * beta + ClpE * ph + ClrE * rh + ac.Clda * (1 - 0.55 * sigma) * da - ac.Cldr * dr;
-  let Cm = ac.Cm0 + ac.Cma * alpha + ac.Cmq * qh + ac.Cmde * (1 - 0.5 * sigma) * de + dCmf - 0.9 * sigma * Math.max(0, alpha - aS);
-  let Cn = ac.Cnb * beta + ac.Cnp * ph + CnrE * rh + ac.Cnda * da + ac.Cndr * dr;
+  let Cm = ac.Cm0 + ac.Cma * alpha + ac.Cmq * qh + ac.Cmde * (1 - 0.5 * sigma) * (sigma > 0.5 && de > 0 ? ac.spinRec ?? 1 : 1) * de + dCmf - 0.9 * sigma * Math.max(0, alpha - aS);
+  let Cn = ac.Cnb * beta + ac.Cnp * ph + CnrE * rh + ac.Cnda * da + ac.Cndr * (sigma > 0.5 && dr * s.r < 0 ? 0.5 * (ac.spinRec ?? 1) : 1) * dr;   // anti-spin rudder is weak while the wing is stalled, weaker still at aft CG
   // stall buffet: small random rolling/pitching shudder
   if (sigma > 0.15 && V > 15) { s.buffet = sigma; Cl += (Math.random() - 0.5) * 0.012 * sigma; Cm += (Math.random() - 0.5) * 0.02 * sigma; } else s.buffet = 0;
   const qS = qbar * ac.S;
@@ -213,6 +270,6 @@ export function readout(s, groundM = 0) {
     hdg: ((e.psi / D2R) + 360) % 360, trk: gs > 3 ? ((Math.atan2(s.ve, s.vn) / D2R) + 360) % 360 : ((e.psi / D2R) + 360) % 360,
     pitch: e.th / D2R, bank: e.phi / D2R, alpha: s.alpha / D2R, beta: s.beta / D2R, nz: s.nz, rpm: s.rpm, flap: s.flap,
     stall: s.stall, warn: s.warn, spin: s.spin, slip: s.slip, onGround: s.onGround, crashed: s.crashed, overspeed: s.overspeed, overG: s.overG,
-    yawRate: s.r / D2R, buffet: s.buffet,
+    yawRate: s.r / D2R, buffet: s.buffet, fuelL: s.fuelL, fuelR: s.fuelR, running: s.running, starved: s.starved,
   };
 }
