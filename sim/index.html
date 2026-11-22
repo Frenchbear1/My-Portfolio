@@ -7,7 +7,7 @@
 <meta name="robots" content="noindex">
 <title>Fly the Skyhawk · David LaBarre</title>
 <link rel="icon" href="../assets/icons/favicon-browser-32.png">
-<link rel="stylesheet" href="sim.css?v=4">
+<link rel="stylesheet" href="sim.css?v=5">
 </head>
 <body>
 <div id="globe" aria-label="3D flight view"></div>
@@ -154,13 +154,15 @@
 <div id="rotate" aria-label="Rotate your phone to landscape"><svg viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg></div>
 
 <script>
+// Graphics budget: 0 desktop, 1 phones/tablets, 2 after the 3D view has run out of graphics memory once.
+(function () { var t = matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints > 0 && !matchMedia('(pointer: fine)').matches), v = 0; try { v = +localStorage.getItem('skyhawk-lite') || 0; } catch (e) {} window.SKYHAWK_LITE = Math.max(v, t ? 1 : 0); })();
 // CesiumJS (Apache-2.0) from jsDelivr, loaded only on this page. No Cesium ion, no keys.
 (function () {
   var V = '1.147.0', base = /[?&]cesium=local/.test(location.search) ? '/cesium/' : 'https://cdn.jsdelivr.net/npm/cesium@' + V + '/Build/Cesium/';
   window.CESIUM_BASE_URL = base;
   var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = base + 'Widgets/widgets.css'; document.head.appendChild(l);
   var s = document.createElement('script'); s.src = base + 'Cesium.js';
-  s.onload = function () { import('./js/main.js?v=7').catch(function (e) { console.error(e); document.getElementById('aptInfo').textContent = 'Startup error: ' + e.message; }); };
+  s.onload = function () { import('./js/main.js?v=8').catch(function (e) { console.error(e); document.getElementById('aptInfo').textContent = 'Startup error: ' + e.message; }); };
   s.onerror = function () { document.getElementById('aptInfo').textContent = 'Could not load the 3D engine. Check your connection.'; };
   document.head.appendChild(s);
 })();

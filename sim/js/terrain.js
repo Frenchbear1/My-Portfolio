@@ -3,7 +3,7 @@
 // answers elevation queries for flight planning (terrain profile, AGL, airspace floors).
 const TERRAIN_URL = window.SKYHAWK_TERRAIN || 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';   // override used by offline tests
 const C = window.Cesium;
-const MAX_Z = 13, SAMPLE_Z = 11, N = 65, CACHE_MAX = 260;
+const MAX_Z = 13, SAMPLE_Z = 11, N = 65, CACHE_MAX = [260, 120, 70][window.SKYHAWK_LITE || 0];
 const cache = new Map();            // key -> Int16Array | Promise
 let workers = [], rr = 0, seq = 0; const pending = new Map();
 export const terrainStats = { ok: 0, fail: 0 };

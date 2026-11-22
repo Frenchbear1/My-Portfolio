@@ -4,7 +4,7 @@ import { C172, createState, step, readout, configure, autoTrim, trimmed } from '
 import { STATIONS, compute as wbCompute, defaults as wbDefaults, drawEnvelope } from './wb.js';
 import { createLink } from './link.js?v=2';
 import { buildAircraftModel } from './model.js';
-import { createTerrainProvider, elevAsync, elevSync } from './terrain.js';
+import { createTerrainProvider, elevAsync, elevSync } from './terrain.js?v=2';
 import { findAirport, setBusyHandler } from './airport.js?v=2';
 import { createControls } from './controls.js?v=2';
 import { createHud, createMinimap, createAudio } from './hud.js?v=3';
@@ -16,6 +16,9 @@ const USGS = 'https://basemap.nationalmap.gov/arcgis/rest/services', FAA_TILES =
 const SAT_TILES = USGS + '/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}';
 const IS_TOUCH = matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints > 0 && !matchMedia('(pointer: fine)').matches);
 const EMBED = window.parent !== window;
+// Phones and tablets get a low-memory graphics budget (iOS Safari gives a page far less GPU memory than a
+// desktop and silently drops the 3D canvas when it runs out). Level 2 is used after that has happened once.
+const LITE = window.SKYHAWK_LITE || 0;      // set in index.html before any module loads
 document.body.classList.toggle('touch', IS_TOUCH);
 
 // ---------------------------------------------------------------- state
@@ -36,16 +39,16 @@ async function initWorld() {
   viewer = new C.Viewer('globe', {
     baseLayer: false, terrainProvider: createTerrainProvider(), animation: false, timeline: false, baseLayerPicker: false, geocoder: false, homeButton: false,
     sceneModePicker: false, navigationHelpButton: false, fullscreenButton: false, infoBox: false, selectionIndicator: false, vrButton: false,
-    msaaSamples: IS_TOUCH ? 1 : 4, scene3DOnly: true, showRenderLoopErrors: false, contextOptions: { webgl: { powerPreference: 'high-performance' } },
+    msaaSamples: LITE ? 1 : 4, scene3DOnly: true, showRenderLoopErrors: false, contextOptions: { webgl: { powerPreference: LITE ? 'default' : 'high-performance', antialias: !LITE } },
   });
   scene = viewer.scene; const globe = scene.globe;
   viewer.clock.shouldAnimate = false; scene.screenSpaceCameraController.enableInputs = false;
   globe.depthTestAgainstTerrain = true; globe.enableLighting = true; globe.dynamicAtmosphereLighting = true; globe.dynamicAtmosphereLightingFromSun = true;   // sky follows the real sun even under moonlight
    globe.showGroundAtmosphere = true; globe.baseColor = C.Color.fromCssColorString('#0b1a24');
-  globe.maximumScreenSpaceError = IS_TOUCH ? 2.4 : 1.6; globe.tileCacheSize = IS_TOUCH ? 140 : 300; globe.preloadSiblings = true;
+  globe.maximumScreenSpaceError = [1.6, 3, 5][LITE]; globe.tileCacheSize = [300, 60, 30][LITE]; globe.preloadSiblings = !LITE; globe.preloadAncestors = LITE < 2;
   scene.fog.enabled = true; scene.fog.density = 2.2e-4; scene.fog.minimumBrightness = 0.06; scene.highDynamicRange = false;
   scene.postProcessStages.fxaa.enabled = IS_TOUCH; // render at CSS pixels x a capped scale (not devicePixelRatio x scale, which is ~4.5x on an iPhone and can run Safari out of memory)
-  viewer.useBrowserRecommendedResolution = true; viewer.resolutionScale = Math.min(devicePixelRatio || 1, IS_TOUCH ? 1.5 : 2);
+  viewer.useBrowserRecommendedResolution = true; viewer.resolutionScale = Math.min(devicePixelRatio || 1, [2, 1.25, 1][LITE]);
   scene.maximumRenderTimeChange = Infinity; idle(true);
   scene.camera.frustum.near = 0.5;
   const il = scene.imageryLayers, US = C.Rectangle.fromDegrees(-180, 13, -64, 72);
@@ -78,9 +81,16 @@ async function initWorld() {
     if (renderErrs === 2) { viewer.resolutionScale = 1; scene.fog.enabled = false; globe.maximumScreenSpaceError = 4; }
     if (renderErrs <= 6) setTimeout(() => { viewer.useDefaultRenderLoop = true; }, 300);
   });
-  scene.canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); report('Graphics', new Error('WebGL context lost (out of graphics memory)')); }, false);
+  scene.canvas.addEventListener('webglcontextlost', e => {
+    e.preventDefault(); report('Graphics', new Error('the 3D view ran out of graphics memory'));
+    // it can't come back on its own: reload in the lowest-detail mode and keep the setup
+    try { localStorage.setItem('skyhawk-lite', '2'); localStorage.setItem('skyhawk-setup', JSON.stringify(opts)); sessionStorage.setItem('skyhawk-lowmsg', '1'); } catch { /* private */ }
+    if (LITE < 2) setTimeout(() => location.reload(), 1800);
+  }, false);
   // safety net: if the globe stops drawing while flying, keep the instruments and physics alive
   setInterval(() => { if (sim.flying && performance.now() - last > 1500) { try { viewer.useDefaultRenderLoop = true; scene.requestRender(); } catch { /* still down */ } } }, 1000);
+  const own = () => { requestAnimationFrame(own); const now = performance.now(); if (sim.flying && now - last > 300) { const dt = Math.min(0.1, (now - (own.t || now)) / 1000); try { frame(dt); } catch (e) { report('Sim', e); } } own.t = now; };
+  requestAnimationFrame(own);
 }
 // while a menu is up and nothing is flying, only redraw the globe when something actually changes
 function idle(on) { if (scene) { scene.requestRenderMode = on; if (!on) scene.requestRender(); } }
@@ -88,7 +98,7 @@ const reported = new Set();
 function report(where, e) {
   const msg = `${where} error: ${(e && (e.message || e)) || 'unknown'}`.slice(0, 160); console.error(msg, e);
   if (reported.has(msg)) return; reported.add(msg);
-  const el = $('#errbox'); el.textContent = msg + '  (screenshot this for David\'s developer)'; el.classList.add('on'); setTimeout(() => el.classList.remove('on'), 12000);
+  const el = $('#errbox'); el.textContent = msg + ' · tap to close'; el.classList.add('on');
 }
 window.addEventListener('error', e => report('Page', e.error || e.message));
 window.addEventListener('unhandledrejection', e => report('Page', e.reason));
@@ -119,11 +129,11 @@ function setTime(kind) {
 }
 function setSky(kind) {
   if (clouds) { scene.primitives.remove(clouds); clouds = null; }
-  scene.fog.density = kind === 'ovc' ? 4.5e-4 : 2.2e-4;
-  if (kind === 'clear' || !C.CloudCollection || !apt) return;
-  clouds = scene.primitives.add(new C.CloudCollection({ noiseDetail: 16 }));
+  scene.fog.density = (kind === 'ovc' ? 4.5e-4 : 2.2e-4) * (LITE ? 1.6 : 1);     // fog also culls distant terrain tiles
+  if (kind === 'clear' || !C.CloudCollection || !apt || LITE > 1) return;
+  clouds = scene.primitives.add(new C.CloudCollection({ noiseDetail: LITE ? 8 : 16 }));
   let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  const n = kind === 'ovc' ? 170 : 70, base = apt.elevFt * FT + (kind === 'ovc' ? 2600 : 4200) * FT, R = kind === 'ovc' ? 16000 : 26000;
+  const n = Math.round((kind === 'ovc' ? 170 : 70) * (LITE ? 0.3 : 1)), base = apt.elevFt * FT + (kind === 'ovc' ? 2600 : 4200) * FT, R = kind === 'ovc' ? 16000 : 26000;
   for (let i = 0; i < n; i++) {
     const a = rnd() * 2 * Math.PI, r = Math.sqrt(rnd()) * R, sx = (kind === 'ovc' ? 1300 : 700) + rnd() * 900, sy = sx * (0.32 + rnd() * 0.18);
     const lat = apt.lat + Math.cos(a) * r / RE * R2D, lon = apt.lon + Math.sin(a) * r / (RE * Math.cos(apt.lat * D2R)) * R2D;
@@ -449,5 +459,7 @@ Object.assign(minimap.o, opts.mini);
 function syncMapSheet() { $$('#mapSheet .seg button').forEach(b => b.classList.toggle('on', String(minimap.o[b.parentElement.dataset.mini]) === b.dataset.v)); }
 $$('#mapSheet .seg button').forEach(b => b.addEventListener('click', () => { const k = b.parentElement.dataset.mini; minimap.o[k] = k === 'zoom' ? +b.dataset.v : b.dataset.v; opts.mini = { ...minimap.o }; sim.miniT = 0; syncMapSheet(); }));
 $('#minimap').addEventListener('click', () => act('mapMenu'));
+$('#errbox').addEventListener('click', () => $('#errbox').classList.remove('on'));
+try { if (sessionStorage.getItem('skyhawk-lowmsg')) { sessionStorage.removeItem('skyhawk-lowmsg'); setTimeout(() => { aptInfo.textContent = 'Switched to low-detail graphics for this device. Press Start.'; aptInfo.className = 'ok'; }, 2500); } } catch { /* private */ }
 wbUi();
 window.__sim = { link, get ac() { return ac; }, get elec() { return elec; }, sim, opts, get s() { return s; }, get apt() { return apt; }, act, readout: () => s && readout(s), viewer: () => viewer, controls };
