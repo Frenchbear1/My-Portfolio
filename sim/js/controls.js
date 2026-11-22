@@ -4,13 +4,14 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const toward = (v, t, rate, dt) => v + clamp(t - v, -rate * dt, rate * dt);
 const expo = (v, p) => Math.sign(v) * Math.abs(v) ** p;      // soft around centre, full deflection still available
 
-export function createControls({ onAction }) {
+export function createControls({ onAction, orient }) {
+  const OP = e => orient.P(e), OR = el => orient.R(el);
   const keys = new Set();
   const st = { de: 0, da: 0, dr: 0, thr: 0, brk: 0, trim: 0, flaps: 0 }, raw = { de: 0, da: 0 };
   const touch = { x: 0, y: 0, active: false, rud: 0, brk: 0, trimDir: 0 };
   const tilt = { on: false, roll: 0, pitch: 0, ref: null, raw: null, ok: false };
   let mode = 'keys';
-  const DOWN = { ArrowUp: 1, ArrowDown: 1, ArrowLeft: 1, ArrowRight: 1, KeyA: 1, KeyD: 1, KeyW: 1, KeyS: 1, Space: 1, KeyQ: 1, KeyE: 1, KeyZ: 1, KeyX: 1, ShiftLeft: 1, ControlLeft: 1, PageUp: 1, PageDown: 1 };
+  const DOWN = { ArrowUp: 1, ArrowDown: 1, ArrowLeft: 1, ArrowRight: 1, KeyA: 1, KeyD: 1, KeyW: 1, KeyS: 1, Space: 1, KeyQ: 1, KeyE: 1, KeyZ: 1, KeyX: 1, KeyI: 1, ShiftLeft: 1, ControlLeft: 1, PageUp: 1, PageDown: 1 };
   const ACT = { KeyF: 'flapsDown', KeyV: 'flapsUp', KeyC: 'cam', KeyP: 'pause', KeyM: 'map', KeyN: 'time', KeyK: 'mini', KeyH: 'help', KeyU: 'sound', Escape: 'escape', KeyR: 'restart' };
   addEventListener('keydown', e => {
     if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
@@ -24,8 +25,8 @@ export function createControls({ onAction }) {
   const stick = document.getElementById('stick'), knob = document.getElementById('knob');
   let stickId = null;
   const stickMove = e => {
-    const r = stick.getBoundingClientRect(), R = r.width / 2;
-    let x = (e.clientX - r.left - R) / (R * 0.78), y = (e.clientY - r.top - R) / (R * 0.78); const m = Math.hypot(x, y); if (m > 1) { x /= m; y /= m; }
+    const r = OR(stick), R = r.width / 2;
+    let x = (OP(e).x - r.left - R) / (R * 0.78), y = (OP(e).y - r.top - R) / (R * 0.78); const m = Math.hypot(x, y); if (m > 1) { x /= m; y /= m; }
     touch.x = x; touch.y = y; knob.style.transform = `translate(${x * R * 0.78}px,${y * R * 0.78}px)`;
   };
   stick.addEventListener('pointerdown', e => { stickId = e.pointerId; stick.setPointerCapture(e.pointerId); touch.active = true; stickMove(e); });
@@ -44,13 +45,14 @@ export function createControls({ onAction }) {
   hold('rudL', () => { touch.rud = -1; }, () => { if (touch.rud < 0) touch.rud = 0; });
   hold('rudR', () => { touch.rud = 1; }, () => { if (touch.rud > 0) touch.rud = 0; });
   hold('brake', () => { touch.brk = 1; }, () => { touch.brk = 0; });
+  hold('crankBtn', () => { touch.crank = 1; }, () => { touch.crank = 0; });
   hold('trimUp', () => { touch.trimDir = 1; }, () => { touch.trimDir = 0; });
   hold('trimDn', () => { touch.trimDir = -1; }, () => { touch.trimDir = 0; });
 
   // ----- throttle slider -----
   const thr = document.getElementById('throttle'), fill = document.getElementById('thrFill'), tk = document.getElementById('thrKnob');
   let thrId = null;
-  const thrMove = e => { const r = thr.getBoundingClientRect(); st.thr = clamp(1 - (e.clientY - r.top - 13) / (r.height - 26), 0, 1); };
+  const thrMove = e => { const r = OR(thr); st.thr = clamp(1 - (OP(e).y - r.top - 13) / (r.height - 26), 0, 1); };
   thr.addEventListener('pointerdown', e => { thrId = e.pointerId; thr.setPointerCapture(e.pointerId); thrMove(e); });
   thr.addEventListener('pointermove', e => { if (e.pointerId === thrId) thrMove(e); });
   thr.addEventListener('pointerup', () => { thrId = null; });
@@ -61,7 +63,8 @@ export function createControls({ onAction }) {
     if (e.beta == null || e.gamma == null) return;
     const b = e.beta * Math.PI / 180, g = e.gamma * Math.PI / 180;
     const up = [-Math.sin(g) * Math.cos(b), Math.sin(b), Math.cos(g) * Math.cos(b)];   // earth "up" in device axes
-    const ang = ((screen.orientation && screen.orientation.angle) ?? window.orientation ?? 0) * Math.PI / 180;
+    orient.up({ x: up[0], y: up[1] });
+    const ang = orient.angle() * Math.PI / 180;        // the landscape the cockpit is locked to, even if the browser flipped to portrait
     const ux = up[0] * Math.cos(ang) - up[1] * Math.sin(ang), uy = up[0] * Math.sin(ang) + up[1] * Math.cos(ang), uz = up[2];
     tilt.raw = { roll: Math.asin(clamp(-ux, -1, 1)), pitch: Math.atan2(uy, uz) };
     if (!tilt.ref) tilt.ref = { ...tilt.raw };
@@ -97,7 +100,7 @@ export function createControls({ onAction }) {
     dr = rudKey || touch.rud; st.dr = dr ? toward(st.dr, dr, dr * st.dr < 0 ? 5 : 2.2, dt) : toward(st.dr, 0, 3.5, dt);
     if (k('KeyW') || k('ShiftLeft') || k('PageUp')) st.thr = clamp(st.thr + dt * 0.55, 0, 1);
     if (k('KeyS') || k('ControlLeft') || k('PageDown')) st.thr = clamp(st.thr - dt * 0.55, 0, 1);
-    st.brk = k('Space') || touch.brk ? 1 : 0;
+    st.brk = k('Space') || touch.brk ? 1 : 0; st.crank = k('KeyI') || !!touch.crank;
     const trimDir = (k('KeyE') ? 1 : 0) - (k('KeyQ') ? 1 : 0) || touch.trimDir;
     if (trimDir) st.trim = clamp(st.trim + trimDir * dt * 0.28, -1, 1);
     drawThr();

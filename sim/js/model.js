@@ -94,7 +94,17 @@ export function buildAirframe(key) {
     paint.surface(A, B, cA * 0.6, cB * 0.6, 0.16); panel(null, 'paint', te(0), te(0.08), 0.42 * ch(0), 0.42 * ch(0.08), 0.14); panel('elev' + (sy > 0 ? 'L' : 'R'), 'paint', te(0.08), te(1), 0.42 * ch(0.08), 0.42 * cB, 0.14); }
   // engines / props
   const tips = { left: [wx - sweep - S.chord[1] * 0.4, half, wz + dih * half], right: [wx - sweep - S.chord[1] * 0.4, -half, wz + dih * half], tail: [X(1), 0, fh * 0.3], top: [tx - finC * 0.6, 0, tz + finH], belly: [X(0.4), 0, -fh] };
-  const propAt = (x, y, z, r) => { prop.disc([x, y, z], r); dark.loft([{ x: x + 0.32 * k, y, w: 0.02, h: 0.02, z }, { x: x + 0.1 * k, y, w: 0.14 * k, h: 0.14 * k, z }, { x: x - 0.06, y, w: 0.17 * k, h: 0.17 * k, z }], 10); };
+  const propAt = (x, y, z, r) => {
+    // propeller as two nodes about the hub: a blur disc (shown at speed) and two twisted blades (shown while slow)
+    const disc = new Mesh(); disc.disc([0, 0, 0], r); surfs.push({ name: 'disc', mat: 'prop', mesh: disc, hinge: [x, y, z], axis: [1, 0, 0] });
+    const bl = new Mesh(), N = 8;
+    for (const sz of [1, -1]) for (let i = 0; i < N; i++) {
+      const at = j => { const f = j / N, rr = 0.09 + (r - 0.09) * f, ch = (0.15 - 0.07 * f) * (1 - 0.6 * Math.max(0, f - 0.85) / 0.15), tw = (28 - 16 * f) * Math.PI / 180;
+        const cx = Math.sin(tw) * ch / 2, cy = Math.cos(tw) * ch / 2 * sz; return [[cx, -cy, rr * sz], [-cx, cy, rr * sz]]; };
+      const [a0, b0] = at(i), [a1, b1] = at(i + 1); bl.quad(a0, a1, b1, b0); bl.quad(a0, b0, b1, a1);
+    }
+    surfs.push({ name: 'blades', mat: 'blade', mesh: bl, hinge: [x, y, z], axis: [1, 0, 0] });
+    dark.loft([{ x: x + 0.32 * k, y, w: 0.02, h: 0.02, z }, { x: x + 0.1 * k, y, w: 0.14 * k, h: 0.14 * k, z }, { x: x - 0.06, y, w: 0.17 * k, h: 0.17 * k, z }], 10); };
   if (S.twin === 'prop') for (const sy of [-1, 1]) { const y = sy * 1.75, z = wz + 0.12; paint.loft([{ x: wx + 1.25, y, w: 0.3, h: 0.3, z }, { x: wx + 0.9, y, w: 0.42, h: 0.4, z }, { x: wx - 0.4, y, w: 0.4, h: 0.36, z }, { x: wx - 1.5, y, w: 0.1, h: 0.1, z: z + 0.05 }], 12); propAt(wx + 1.3, y, z, 0.95); }
   else if (jet) for (const sy of [-1, 1]) { const y = sy * (fw + 0.5), z = fh * 0.45, x = X(0.68); paint.loft([{ x: x + 1.2, y, w: 0.4, h: 0.4, z }, { x: x + 0.6, y, w: 0.46, h: 0.46, z }, { x: x - 0.9, y, w: 0.4, h: 0.4, z }, { x: x - 1.4, y, w: 0.26, h: 0.26, z }], 14); dark.disc([x + 1.21, y, z], 0.34); dark.disc([x - 1.41, y, z], 0.22); }
   else propAt(X(0.02) + 0.02, 0, F[0].z, (big ? 1.33 : 0.95 * k));
@@ -130,6 +140,7 @@ export function buildAircraftModel(key) {
     gear: { pbrMetallicRoughness: { baseColorFactor: [0.1, 0.1, 0.11, 1], metallicFactor: 0.2, roughnessFactor: 0.8 } },
     navy: { pbrMetallicRoughness: { baseColorFactor: [0.06, 0.11, 0.33, 1], metallicFactor: 0.25, roughnessFactor: 0.4 }, doubleSided: true },
     red: { pbrMetallicRoughness: { baseColorFactor: [0.72, 0.07, 0.1, 1], metallicFactor: 0.25, roughnessFactor: 0.4 }, doubleSided: true },
+    blade: { pbrMetallicRoughness: { baseColorFactor: [0.13, 0.13, 0.14, 1], metallicFactor: 0.4, roughnessFactor: 0.5 }, doubleSided: true },
   };
   const names = Object.keys(mats), bufs = [], accessors = [], views = [], prims = {}; let off = 0;
   const push = (arr, type) => { const f = new Float32Array(arr); views.push({ buffer: 0, byteOffset: off, byteLength: f.byteLength, target: 34962 }); const acc = { bufferView: views.length - 1, componentType: 5126, count: f.length / 3, type }; bufs.push(f); off += f.byteLength; accessors.push(acc); return acc; };
@@ -140,7 +151,7 @@ export function buildAircraftModel(key) {
     acc.min = mn; acc.max = mx; const pi = accessors.length - 1; push(conv(m.n), 'VEC3');
     return { attributes: { POSITION: pi, NORMAL: pi + 1 }, material: mi, mode: 4 };
   };
-  names.forEach((nm, mi) => { const m = af.meshes[nm]; if (m.p.length) prims[nm] = packMesh(m, mi); });
+  names.forEach((nm, mi) => { const m = af.meshes[nm]; if (m && m.p.length) prims[nm] = packMesh(m, mi); });
   const g3 = v => [v[1], v[2], v[0]], sMesh = af.surfs.map(sf => ({ primitives: [packMesh(sf.mesh, names.indexOf(sf.mat))] }));
   const surfs = af.surfs.map(sf => ({ name: sf.name, hinge: g3(sf.hinge), axis: g3(sf.axis), sgn: sf.name === 'rud' ? 1 : sf.axis[1] > 0 ? -1 : 1 }));
   const body = names.filter(n => n !== 'gear' && prims[n]).map(n => prims[n]);

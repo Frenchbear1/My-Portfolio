@@ -35,7 +35,7 @@ body:not(.touch) .touch-only{display:none!important}
 /* minimap */
 #minimap{position:fixed;right:calc(16px + var(--sr));top:calc(14px + var(--st));width:150px;height:150px;border-radius:50%;border:2px solid rgba(255,255,255,.35);box-shadow:0 8px 30px rgba(0,0,0,.4);z-index:4;cursor:pointer;background:#0b1a24}
 #minimap.off{display:none}
-body.touch #minimap{top:calc(10px + var(--st));right:calc(10px + var(--sr));bottom:auto;width:112px;height:112px}
+body.touch #minimap{top:calc(10px + var(--st));right:calc(10px + var(--sr));bottom:auto}
 
 /* touch controls */
 #touch{display:none}
@@ -56,8 +56,16 @@ body.tilt #pedals{left:calc(22px + var(--sa))}
 body.touch #bar{bottom:calc(8px + var(--sb));padding:3px;gap:0}
 body.touch #bar button{width:40px;height:40px}
 body.touch #bar .ind{min-width:28px}
-@media (max-width:760px){body.touch #bar button{width:34px;height:36px}body.touch #bar svg{width:19px;height:19px}#stick{width:128px;height:128px}#knob{width:54px;height:54px;margin:-27px 0 0 -27px}#pedals{left:calc(160px + var(--sa))}#throttle{height:140px;width:52px}}
-@media (max-height:430px){body.touch #bar{left:auto;right:calc(140px + var(--sr));transform:none;flex-wrap:wrap;width:min(42vw,300px);justify-content:center}#pedals{bottom:calc(14px + var(--sb))}}
+/* cockpit-size rules: classes set from the (possibly rotated) app size */
+body.w760.touch #bar button{width:34px;height:36px}
+body.w760.touch #bar svg{width:19px;height:19px}
+body.w760 #stick{width:128px;height:128px}
+body.w760 #knob{width:54px;height:54px;margin:-27px 0 0 -27px}
+body.w760 #pedals{left:calc(160px + var(--sa))}
+body.w760 #throttle{height:140px;width:52px}
+/* cockpit-size rules: classes set from the (possibly rotated) app size */
+body.h430.touch #bar{left:auto;right:calc(140px + var(--sr));transform:none;flex-wrap:wrap;width:min(42vw,300px);justify-content:center}
+body.h430 #pedals{bottom:calc(14px + var(--sb))}
 
 /* overlays */
 .overlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:20;padding:calc(12px + var(--st)) calc(12px + var(--sr)) calc(12px + var(--sb)) calc(12px + var(--sa));background:rgba(2,6,18,.45)}
@@ -117,13 +125,14 @@ kbd{display:inline-block;min-width:28px;text-align:center;padding:4px 7px;border
   .go{padding:10px;font-size:16px}.fine{display:none}
 }
 /* phones in landscape: icon bar becomes a two-column grid in the free top-left corner */
-@media (max-height:500px){
-  body.touch #bar{left:calc(8px + var(--sa));top:calc(8px + var(--st));bottom:auto;right:auto;transform:none;display:grid;grid-template-columns:repeat(2,36px);width:auto;padding:3px;gap:1px;flex-wrap:nowrap}
-  body.touch #bar button{width:36px;height:34px}body.touch #bar .ind{display:grid;place-items:center;height:34px;min-width:0}
-}
+/* cockpit-size rules: classes set from the (possibly rotated) app size */
+body.h500.touch #bar{left:calc(8px + var(--sa));top:calc(8px + var(--st));bottom:auto;right:auto;transform:none;display:grid;grid-template-columns:repeat(2,36px);width:auto;padding:3px;gap:1px;flex-wrap:nowrap}
+body.h500.touch #bar button{width:36px;height:34px}
+body.h500.touch #bar .ind{display:grid;place-items:center;height:34px;min-width:0}
 /* phones held upright: ask for landscape while flying */
 #rotate{display:none}
-@media (orientation:portrait) and (max-width:600px){body.touch.flying #rotate{display:flex}}
+body.touch.flying.needrotate #rotate{display:flex}
+#app{position:fixed;inset:0}
 #rotate{position:fixed;inset:0;z-index:30;align-items:center;justify-content:center;background:rgba(2,6,18,.82);flex-direction:column;gap:14px;color:var(--mute)}
 #rotate svg{width:64px;height:64px;color:var(--ink);animation:rot 2.2s ease-in-out infinite}
 @keyframes rot{0%,20%{transform:rotate(0)}50%,70%{transform:rotate(-90deg)}100%{transform:rotate(0)}}
@@ -173,3 +182,18 @@ body.mfdoff #minimap{display:none}
 input{font-size:max(16px,1em)}
 #errbox{cursor:pointer;position:fixed;left:50%;bottom:calc(70px + var(--sb));transform:translateX(-50%);max-width:min(92vw,620px);padding:9px 14px;border-radius:12px;background:rgba(150,20,20,.92);border:1px solid #ff8a8a;font:600 12px/1.35 ui-monospace,monospace;z-index:40;display:none;user-select:text;-webkit-user-select:text}
 #errbox.on{display:block}
+#crankBtn{display:none;width:48px;height:48px;border-radius:14px;border:1px solid var(--gold);background:rgba(255,200,87,.25);place-items:center;touch-action:none;color:var(--gold)}
+body.touch.engoff #crankBtn{display:grid}#crankBtn.on{background:rgba(255,200,87,.6)}
+#minimap.square{border-radius:16px}
+.mapcard .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.mapcard .pick{margin:2px 0 10px}
+.dropcard{width:min(760px,100%);display:flex;flex-direction:column;gap:8px}
+.dropmap{position:relative;flex:1;min-height:220px;height:min(52vh,420px);border-radius:14px;overflow:hidden;border:1px solid var(--line)}
+#dropMap{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair}
+.dropzoom{position:absolute;right:8px;top:8px;display:flex;flex-direction:column;gap:6px}
+.dropzoom button{width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:rgba(7,17,38,.8);font:800 20px/1 Figtree,sans-serif;display:grid;place-items:center}
+.drophint{position:absolute;left:50%;top:8px;transform:translateX(-50%);margin:0;padding:6px 10px;border-radius:9px;background:rgba(7,17,38,.8);font-size:12px;font-weight:700;pointer-events:none;white-space:nowrap}
+.droprow{display:grid;grid-template-columns:1.2fr 1fr 1.2fr 1fr;gap:8px}
+.droprow .field{margin:0}.droprow input{width:100%;font:700 16px ui-monospace,monospace;padding:9px 10px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.07);color:var(--ink);text-transform:uppercase;user-select:text;-webkit-user-select:text}
+#dropGnd{margin:0;text-align:left}
+@media (max-width:620px),(max-height:520px){.droprow{grid-template-columns:repeat(4,minmax(0,1fr))}.dropmap{height:auto;min-height:150px}.dropcard h2{display:none}.dropcard{height:100%}}

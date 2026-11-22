@@ -131,8 +131,16 @@ same scroll position and unloads the sim.
   and shutoff, trim wheel, flaps, pedals with toe brakes, parking brake) with tach and fuel
   gauges, tilted like a yoke. It links straight to the computer over WebRTC using the free
   PeerJS broker, so no server is needed.
+- **Clouds**: volumetric (ray-marched 3D noise with sun scattering, self-shadowing, flat bases,
+  sunset colour); you can fly into them. Lighter settings on phones.
+- **Engine start**: choose a cold start, then hold I (or the key button, or the phone's key
+  at START): the propeller visibly turns over on the starter and catches.
+- **Map**: tap the map for layer, north-up/track-up, range, circle/square and size, and to drop
+  the airplane anywhere at a chosen heading, altitude and speed.
+- **Landscape lock**: on phones the cockpit stays landscape even if the browser flips to portrait
+  (or the iPhone's portrait lock is on); tilt keeps using the landscape axes.
 - **Controls**: arrows pitch/roll, A/D rudder, W/S throttle, F/V flaps, Q/E trim, Space brakes,
-  C camera (chase, cockpit, fly-by), M map, N time, P pause. Phones and iPads get an
+  C camera (chase, cockpit, fly-by), M map, N time, P pause, I (hold) start engine. Phones and iPads get an
   on-screen joystick (or device tilt), rudder pedals, throttle, trim and brake, with the
   rest as icons.
 

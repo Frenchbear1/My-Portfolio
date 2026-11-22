@@ -9,9 +9,13 @@ const room = (location.hash.slice(1) || new URLSearchParams(location.search).get
 const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const saved = (() => { try { return JSON.parse(localStorage.getItem('skyhawk-pad') || '{}'); } catch { return {}; } })();
 const opt = Object.assign({ invP: false, invR: false, sens: 1, tilt: true }, saved), save = () => { try { localStorage.setItem('skyhawk-pad', JSON.stringify(opt)); } catch { /* private mode */ } };
-const ctl = { a: 0, e: 0, r: 0, th: 0, mx: 1, fl: 0, brkL: 0, brkR: 0, park: 1, pt: 0, ign: 3, eng: true, sel: 'B', shutoff: false, bat: true, alt: true, avn: true, lights: { nav: true, bcn: true, strobe: true, land: false, taxi: false }, cmd: null };
+const ctl = { crank: false, a: 0, e: 0, r: 0, th: 0, mx: 1, fl: 0, brkL: 0, brkR: 0, park: 1, pt: 0, ign: 3, eng: true, sel: 'B', shutoff: false, bat: true, alt: true, avn: true, lights: { nav: true, bcn: true, strobe: true, land: false, taxi: false }, cmd: null };
 const sw = { alt: true, bat: true, bus1: true, bus2: true, pump: false, bcn: true, land: false, taxi: false, nav: true, strobe: true, pitot: false };
 let tel = null, cmdId = 0, lastOk = 0, tiltOk = false, base = null, raw = { u: 1, r: 0, z: 0 }, touchStick = null, keyPos = 3, crank = 0, engMsg = '', conn = null, peer = null;
+import { createOrient } from './orient.js';
+const sizeU = () => { const a = document.getElementById('app'); document.documentElement.style.setProperty('--u', Math.min(a.clientHeight / 100, a.clientWidth / 200) + 'px'); };
+addEventListener('resize', () => setTimeout(sizeU, 80));
+const orient = createOrient(document.getElementById('app'), { onChange: () => requestAnimationFrame(sizeU) }), OP = e => orient.P(e), OR = el => orient.R(el);
 const buzz = (ms = 10) => { try { navigator.vibrate && navigator.vibrate(ms); } catch { /* unsupported */ } };
 const draws = [];
 
@@ -21,8 +25,8 @@ function pushPull(id, key, fmt) {
   const geo = () => { const H = track.clientHeight, R = knob.offsetWidth / 2 || 20; return { y0: 11 + R * 0.62, y1: H - R * 1.12 }; };
   const draw = () => { const g = geo(), y = g.y0 + (1 - ctl[key]) * (g.y1 - g.y0); knob.style.top = y + 'px'; knob.style.transform = `translate(-50%,-50%) scale(${1 + (1 - ctl[key]) * 0.13})`; shaft.style.height = Math.max(0, y - 9) + 'px'; val.textContent = fmt(ctl[key]); };
   let grab = 0;
-  const set = e => { const g = geo(), r = track.getBoundingClientRect(); let v = clamp(1 - (e.clientY - r.top - grab - g.y0) / (g.y1 - g.y0), 0, 1); if (v > 0.975) v = 1; if (v < 0.025) v = 0; if ((v === 0 || v === 1) && v !== ctl[key]) buzz(14); ctl[key] = v; draw(); };
-  track.addEventListener('pointerdown', e => { track.setPointerCapture(e.pointerId); const g = geo(), r = track.getBoundingClientRect(), ky = g.y0 + (1 - ctl[key]) * (g.y1 - g.y0), d = e.clientY - r.top - ky; grab = Math.abs(d) < knob.offsetWidth * 0.7 ? d : 0; set(e); });
+  const set = e => { const g = geo(), r = OR(track); let v = clamp(1 - (OP(e).y - r.top - grab - g.y0) / (g.y1 - g.y0), 0, 1); if (v > 0.975) v = 1; if (v < 0.025) v = 0; if ((v === 0 || v === 1) && v !== ctl[key]) buzz(14); ctl[key] = v; draw(); };
+  track.addEventListener('pointerdown', e => { track.setPointerCapture(e.pointerId); const g = geo(), r = OR(track), ky = g.y0 + (1 - ctl[key]) * (g.y1 - g.y0), d = OP(e).y - r.top - ky; grab = Math.abs(d) < knob.offsetWidth * 0.7 ? d : 0; set(e); });
   track.addEventListener('pointermove', e => { if (track.hasPointerCapture(e.pointerId)) set(e); });
   new ResizeObserver(draw).observe(track); draw(); draws.push(draw);
 }
@@ -43,7 +47,7 @@ rockers();
   names.forEach((n, i) => { const s = document.createElement('span'), a = (ang[i] - 90) * Math.PI / 180; s.textContent = n; s.style.left = 50 + Math.cos(a) * 47 + '%'; s.style.top = 52 + Math.sin(a) * 45 + '%'; s.dataset.i = i; K.appendChild(s); });
   const show = () => { $('keyB').style.transform = `rotate(${ang[keyPos]}deg)`; K.querySelectorAll('span').forEach(s => s.classList.toggle('cur', +s.dataset.i === keyPos)); };
   let hold = 0, moved = false;
-  K.addEventListener('pointerdown', e => { e.preventDefault(); K.setPointerCapture(e.pointerId); const r = K.getBoundingClientRect(), right = e.clientX > r.left + r.width / 2; moved = false; clearTimeout(hold);
+  K.addEventListener('pointerdown', e => { e.preventDefault(); K.setPointerCapture(e.pointerId); const r = OR(K), right = OP(e).x > r.left + r.width / 2; moved = false; clearTimeout(hold);
     if (right && keyPos === 3) hold = setTimeout(() => { keyPos = 4; moved = true; buzz(30); show(); }, 220);
     K._right = right; });
   const up = () => { clearTimeout(hold); if (keyPos === 4) { keyPos = 3; crank = 0; } else if (!moved) { keyPos = clamp(keyPos + (K._right ? 1 : -1), 0, 3); buzz(8); } show(); };
@@ -52,6 +56,7 @@ function engine(dt) {            // small engine-management model; fuel starvati
   if (keyPos === 0) { if (ctl.eng) engMsg = 'Magnetos OFF: engine stopped'; ctl.eng = false; }
   else if (ctl.mx < 0.08 && ctl.eng) { ctl.eng = false; engMsg = 'Mixture at idle cut-off: engine stopped'; }
   else if (tel && tel.starved && ctl.eng) { ctl.eng = false; engMsg = tel.fuelL + tel.fuelR < 0.2 ? 'Out of fuel: engine stopped' : 'Fuel starvation: engine stopped'; }
+  ctl.crank = keyPos === 4 && !ctl.eng && sw.bat;      // the starter turns the prop on the computer while you hold START
   if (keyPos === 4 && !ctl.eng) {
     if (!sw.bat) engMsg = 'No start: MASTER (BAT) is off';
     else if (ctl.mx < 0.3) engMsg = 'Cranking… push the MIXTURE in (rich)';
@@ -64,19 +69,19 @@ function engine(dt) {            // small engine-management model; fuel starvati
 }
 // ---------- rudder pedals, toe brakes, trim, flaps, fuel ----------
 { const el = $('rud'), k = $('rudK'); const set = v => { ctl.r = v; k.style.left = 50 + v * 32 + '%'; };
-  const mv = e => { const r = el.getBoundingClientRect(); set(clamp(((e.clientX - r.left) / r.width - 0.5) * 2.4, -1, 1)); };
+  const mv = e => { const r = OR(el); set(clamp(((OP(e).x - r.left) / r.width - 0.5) * 2.4, -1, 1)); };
   el.addEventListener('pointerdown', e => { el.setPointerCapture(e.pointerId); mv(e); }); el.addEventListener('pointermove', e => { if (el.hasPointerCapture(e.pointerId)) mv(e); });
   const up = () => set(0); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up); }
 for (const [id, key] of [['bBrkL', 'brkL'], ['bBrkR', 'brkR']]) { const b = $(id); const dn = e => { e.preventDefault(); ctl[key] = 1; b.classList.add('on'); }, up = () => { ctl[key] = 0; b.classList.remove('on'); }; b.addEventListener('pointerdown', dn); b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('pointerleave', up); }
 { const el = $('ptW'); let last = null, acc = 0; const show = () => { el.style.backgroundPositionY = ctl.pt * 150 + 'px'; $('ptI').style.top = 50 + ctl.pt * 36 + '%'; };
-  el.addEventListener('pointerdown', e => { el.setPointerCapture(e.pointerId); last = e.clientY; });
-  el.addEventListener('pointermove', e => { if (last == null) return; const d = e.clientY - last; last = e.clientY; ctl.pt = clamp(ctl.pt + d * 0.0045, -1, 1); acc += Math.abs(d); if (acc > 14) { acc = 0; buzz(4); } show(); });   // roll the wheel down (toward you) = nose up
+  el.addEventListener('pointerdown', e => { el.setPointerCapture(e.pointerId); last = OP(e).y; });
+  el.addEventListener('pointermove', e => { if (last == null) return; const d = OP(e).y - last; last = OP(e).y; ctl.pt = clamp(ctl.pt + d * 0.0045, -1, 1); acc += Math.abs(d); if (acc > 14) { acc = 0; buzz(4); } show(); });   // roll the wheel down (toward you) = nose up
   const up = () => (last = null); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up); draws.push(show); show(); }
 { const T = $('flT'), K = $('flK'), pos = [12, 37, 62, 88]; const show = () => (K.style.top = pos[ctl.fl] + '%');
-  const set = e => { const r = T.getBoundingClientRect(), p = (e.clientY - r.top) / r.height * 100; let b = 0; pos.forEach((v, i) => { if (Math.abs(v - p) < Math.abs(pos[b] - p)) b = i; }); if (b !== ctl.fl) { ctl.fl = b; buzz(16); show(); } };
+  const set = e => { const r = OR(T), p = (OP(e).y - r.top) / r.height * 100; let b = 0; pos.forEach((v, i) => { if (Math.abs(v - p) < Math.abs(pos[b] - p)) b = i; }); if (b !== ctl.fl) { ctl.fl = b; buzz(16); show(); } };
   T.addEventListener('pointerdown', e => { T.setPointerCapture(e.pointerId); set(e); }); T.addEventListener('pointermove', e => { if (T.hasPointerCapture(e.pointerId)) set(e); }); show(); draws.push(show); }
 { const S = $('sel'), ang = { L: -60, B: 0, R: 60 }; const show = () => { $('selH').style.transform = `rotate(${ang[ctl.sel]}deg)`; S.querySelectorAll('span').forEach(s => s.classList.toggle('cur', s.dataset.v === ctl.sel)); };
-  S.addEventListener('pointerdown', e => { e.preventDefault(); const r = S.getBoundingClientRect(), f = (e.clientX - r.left) / r.width; const v = f < 0.36 ? 'L' : f > 0.64 ? 'R' : 'B'; if (v !== ctl.sel) { ctl.sel = v; buzz(18); show(); } }); show(); draws.push(show); }
+  S.addEventListener('pointerdown', e => { e.preventDefault(); const r = OR(S), f = (OP(e).x - r.left) / r.width; const v = f < 0.36 ? 'L' : f > 0.64 ? 'R' : 'B'; if (v !== ctl.sel) { ctl.sel = v; buzz(18); show(); } }); show(); draws.push(show); }
 $('shut').onclick = () => { ctl.shutoff = !ctl.shutoff; $('shut').classList.toggle('off', ctl.shutoff); buzz(16); };
 $('bPark').onclick = () => { ctl.park = ctl.park ? 0 : 1; buzz(); };
 $('bCenter').onclick = () => recenter();
@@ -95,7 +100,8 @@ $('bFull').onclick = () => { const d = document.documentElement; try { (document
 function onMotion(ev) {
   const g = ev.accelerationIncludingGravity; if (!g || g.x == null) return;
   const s = iOS ? -1 : 1, m = Math.hypot(g.x, g.y, g.z) || 1, x = g.x * s / m, y = g.y * s / m, z = g.z * s / m;   // iOS reports the opposite sign
-  const ang = (screen.orientation && typeof screen.orientation.angle === 'number' ? screen.orientation.angle : +window.orientation || 90), flip = ang === 270 || ang === -90;
+  orient.up({ x, y });
+  const ang = orient.angle() || 90, flip = ang === 270;     // locked landscape, even if the browser flipped to portrait
   const u = flip ? -x : x, r = flip ? y : -y, k = tiltOk ? 0.35 : 1;
   raw.u += (u - raw.u) * k; raw.r += (r - raw.r) * k; raw.z += (z - raw.z) * k; tiltOk = true;
 }
@@ -123,8 +129,8 @@ function readTilt() {
   document.addEventListener('touchstart', e => { clearTimeout(t); if (e.touches.length === 2 && [...e.touches].every(x => free(x.target))) t = setTimeout(recenter, 350); }, { passive: true });
   const stop = e => { if (e.touches.length < 2) clearTimeout(t); }; document.addEventListener('touchend', stop, { passive: true }); document.addEventListener('touchcancel', stop, { passive: true }); }
 { const w = $('inst'), st = $('stick'); let o = null; const ex2 = v => Math.sign(v) * v * v;
-  w.addEventListener('pointerdown', e => { if (tiltOk && opt.tilt) return; w.setPointerCapture(e.pointerId); o = [e.clientX, e.clientY]; touchStick = { a: 0, e: 0 }; st.hidden = false; const r = w.getBoundingClientRect(); st.style.left = o[0] - r.left + 'px'; st.style.top = o[1] - r.top + 'px'; });
-  w.addEventListener('pointermove', e => { if (!o) return; const R = Math.min(w.clientWidth, w.clientHeight) * 0.38; const ax = clamp((e.clientX - o[0]) / R, -1, 1), ey = clamp((e.clientY - o[1]) / R, -1, 1); touchStick = { a: ex2(ax), e: ex2(ey) }; const r = w.getBoundingClientRect(); st.style.left = clamp(o[0] - r.left + ax * R, 0, r.width) + 'px'; st.style.top = clamp(o[1] - r.top + ey * R, 0, r.height) + 'px'; });
+  w.addEventListener('pointerdown', e => { if (tiltOk && opt.tilt) return; w.setPointerCapture(e.pointerId); o = [OP(e).x, OP(e).y]; touchStick = { a: 0, e: 0 }; st.hidden = false; const r = OR(w); st.style.left = o[0] - r.left + 'px'; st.style.top = o[1] - r.top + 'px'; });
+  w.addEventListener('pointermove', e => { if (!o) return; const R = Math.min(w.clientWidth, w.clientHeight) * 0.38; const ax = clamp((OP(e).x - o[0]) / R, -1, 1), ey = clamp((OP(e).y - o[1]) / R, -1, 1); touchStick = { a: ex2(ax), e: ex2(ey) }; const r = OR(w); st.style.left = clamp(o[0] - r.left + ax * R, 0, r.width) + 'px'; st.style.top = clamp(o[1] - r.top + ey * R, 0, r.height) + 'px'; });
   const up = () => { o = null; touchStick = null; st.hidden = true; }; w.addEventListener('pointerup', up); w.addEventListener('pointercancel', up); }
 
 // ---------- gauges ----------
@@ -211,11 +217,12 @@ function render() {
 // ---------- start ----------
 if (!room) { $('startMsg').textContent = 'This page needs the link from the simulator. In Fly the Skyhawk on your computer, press Phone cockpit and scan the QR code.'; $('go').hidden = true; }
 $('go').onclick = async () => {
-  await enableTilt(); $('start').remove(); optUi(); draws.forEach(d => d());
+  await enableTilt(); $('start').remove(); orient.activate(); optUi(); draws.forEach(d => d());
   try { if (navigator.wakeLock) { let wl = await navigator.wakeLock.request('screen'); document.addEventListener('visibilitychange', async () => { if (document.visibilityState === 'visible') wl = await navigator.wakeLock.request('screen').catch(() => wl); }); } } catch { /* optional */ }
   try { const d = document.documentElement; if (!iOS && d.requestFullscreen) await d.requestFullscreen().catch(() => {}); screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape').catch(() => {}); } catch { /* optional */ }
   connect(); loop(); render();
 };
+sizeU();
 window.__pad = { ctl, sw, get tel() { return tel; }, get conn() { return conn; } };
 // ---------- no zooming (iOS Safari ignores the viewport setting) ----------
 { let lastTap = 0;

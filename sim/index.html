@@ -7,9 +7,10 @@
 <meta name="robots" content="noindex">
 <title>Fly the Skyhawk · David LaBarre</title>
 <link rel="icon" href="../assets/icons/favicon-browser-32.png">
-<link rel="stylesheet" href="sim.css?v=5">
+<link rel="stylesheet" href="sim.css?v=7">
 </head>
 <body>
+<div id="app">
 <div id="globe" aria-label="3D flight view"></div>
 <canvas id="hud" aria-hidden="true"></canvas>
 <div id="hudOff">PFD OFF · MASTER</div>
@@ -45,6 +46,7 @@
   <div id="rightCtl">
     <div id="trimBox"><button id="trimUp" aria-label="Trim nose up"><svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></button><span>T</span><button id="trimDn" aria-label="Trim nose down"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button></div>
     <div id="throttle"><div id="thrFill"></div><div id="thrKnob"></div></div>
+    <button id="crankBtn" aria-label="Start engine (hold)"><svg viewBox="0 0 24 24"><circle cx="8" cy="12" r="4"/><path d="M12 12h9M18 12v3M21 12v2"/></svg></button>
     <button id="brake" aria-label="Brakes (hold)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/><path d="M12 9v3.5M12 15h.01M4.5 6.5a9 9 0 0 0 0 11M19.5 6.5a9 9 0 0 1 0 11"/></svg></button>
   </div>
 </div>
@@ -59,8 +61,9 @@
       <em id="aptInfo">US airports, live FAA data</em>
     </label>
     <div class="field" id="rwyField"><span>Runway</span><div class="seg" id="rwys"><i class="muted">Enter an airport</i></div></div>
-    <div class="row">
+    <div class="row row3">
       <div class="field"><span>Start</span><div class="seg" data-opt="start"><button type="button" data-v="runway" class="on">Runway</button><button type="button" data-v="pattern">In the air</button></div></div>
+      <div class="field"><span>Engine</span><div class="seg" data-opt="engine"><button type="button" data-v="running" class="on">Running</button><button type="button" data-v="cold">Cold start</button></div></div>
       <div class="field"><span>Time</span><div class="seg" data-opt="time"><button type="button" data-v="day" class="on">Day</button><button type="button" data-v="dusk">Dusk</button><button type="button" data-v="night">Night</button></div></div>
     </div>
     <div class="row">
@@ -110,8 +113,30 @@
     <h2 id="mapTitle">Map</h2>
     <div class="field"><span>Layer</span><div class="seg" data-mini="src"><button type="button" data-v="sat">Satellite</button><button type="button" data-v="topo">Topo</button><button type="button" data-v="sectional">Sectional</button></div></div>
     <div class="field"><span>Orientation</span><div class="seg" data-mini="up"><button type="button" data-v="north">North up</button><button type="button" data-v="track">Track up</button></div></div>
+    <div class="row"><div class="field"><span>Shape</span><div class="seg" data-mini="shape"><button type="button" data-v="circle">Circle</button><button type="button" data-v="square">Square</button></div></div>
+    <div class="field"><span>Size</span><div class="seg" data-mini="size"><button type="button" data-v="s">S</button><button type="button" data-v="m">M</button><button type="button" data-v="l">L</button></div></div></div>
     <div class="field"><span>Range</span><div class="seg" data-mini="zoom"><button type="button" data-v="10">Wide</button><button type="button" data-v="12">Area</button><button type="button" data-v="13">Local</button><button type="button" data-v="15">Close</button></div></div>
+    <button type="button" class="pick" data-act="dropMenu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg><b>Drop the plane anywhere</b></button>
     <button type="button" class="go" data-act="closeMap"><svg viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></svg><span>Resume</span></button>
+  </div>
+</div>
+
+<!-- drop the airplane anywhere -->
+<div id="dropSheet" class="overlay sheet2" role="dialog" aria-modal="true" aria-labelledby="dropTitle">
+  <div class="card glass dropcard">
+    <button type="button" class="x" data-act="closeDrop" aria-label="Cancel"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    <h2 id="dropTitle">Drop the plane</h2>
+    <div class="dropmap"><canvas id="dropMap" aria-label="Map: drag to move, pinch or scroll to zoom, tap to place the airplane"></canvas>
+      <div class="dropzoom"><button type="button" data-zoom="1" aria-label="Zoom in">+</button><button type="button" data-zoom="-1" aria-label="Zoom out">−</button><button type="button" data-zoom="me" aria-label="Center on the airplane"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></button></div>
+      <p id="dropHint" class="drophint">Tap the map where you want to be</p></div>
+    <div class="droprow">
+      <label class="field"><span>Go to airport</span><input id="dropApt" maxlength="4" placeholder="ICAO" autocapitalize="characters" spellcheck="false"></label>
+      <label class="field"><span>Heading °</span><input id="dropHdg" type="number" inputmode="numeric" min="0" max="360" step="10" value="360"></label>
+      <label class="field"><span>Altitude ft MSL</span><input id="dropAlt" type="number" inputmode="numeric" min="0" step="500" value="4500"></label>
+      <label class="field"><span>Speed kt</span><input id="dropKt" type="number" inputmode="numeric" min="60" max="160" step="5" value="100"></label>
+    </div>
+    <p id="dropGnd" class="fine"></p>
+    <button type="button" class="go" id="dropGo" disabled><svg viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/></svg><span>Drop here</span></button>
   </div>
 </div>
 
@@ -145,6 +170,7 @@
     <div><kbd>C</kbd><span>Camera</span></div>
     <div><kbd>M</kbd><kbd>N</kbd><span>Map · Time</span></div>
     <div><kbd>P</kbd><span>Pause</span></div>
+    <div><kbd>I</kbd><span>Hold to start engine</span></div>
     <div><kbd>Drag</kbd><span>Look around</span></div>
     <button data-act="closeHelp" class="big" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></svg></button>
   </div>
@@ -153,6 +179,7 @@
 <div id="loading" class="overlay"><div class="spin"></div></div>
 <div id="rotate" aria-label="Rotate your phone to landscape"><svg viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg></div>
 
+</div>
 <script>
 // Graphics budget: 0 desktop, 1 phones/tablets, 2 after the 3D view has run out of graphics memory once.
 (function () { var t = matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints > 0 && !matchMedia('(pointer: fine)').matches), v = 0; try { v = +localStorage.getItem('skyhawk-lite') || 0; } catch (e) {} window.SKYHAWK_LITE = Math.max(v, t ? 1 : 0); })();
@@ -162,7 +189,7 @@
   window.CESIUM_BASE_URL = base;
   var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = base + 'Widgets/widgets.css'; document.head.appendChild(l);
   var s = document.createElement('script'); s.src = base + 'Cesium.js';
-  s.onload = function () { import('./js/main.js?v=8').catch(function (e) { console.error(e); document.getElementById('aptInfo').textContent = 'Startup error: ' + e.message; }); };
+  s.onload = function () { import('./js/main.js?v=10').catch(function (e) { console.error(e); document.getElementById('aptInfo').textContent = 'Startup error: ' + e.message; }); };
   s.onerror = function () { document.getElementById('aptInfo').textContent = 'Could not load the 3D engine. Check your connection.'; };
   document.head.appendChild(s);
 })();

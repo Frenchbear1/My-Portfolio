@@ -6,8 +6,8 @@ const pad3 = n => String(Math.round(((n % 360) + 360) % 360) || 360).padStart(3,
 export function createHud(canvas) {
   const g = canvas.getContext('2d');
   let W = 0, H = 0, dpr = 1;
-  const resize = () => { dpr = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight; canvas.width = W * dpr; canvas.height = H * dpr; };
-  resize(); addEventListener('resize', resize);
+  const resize = () => { dpr = Math.min(2, devicePixelRatio || 1); W = canvas.clientWidth || innerWidth; H = canvas.clientHeight || innerHeight; canvas.width = W * dpr; canvas.height = H * dpr; };
+  resize(); addEventListener('resize', resize); new ResizeObserver(resize).observe(canvas);
   const font = (w, s) => `${w} ${s}px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace`;
   function box(x, y, w, h, r = 10) { g.beginPath(); g.roundRect ? g.roundRect(x, y, w, h, r) : g.rect(x, y, w, h); }
 
@@ -43,14 +43,15 @@ export function createHud(canvas) {
       const band = (a, b, col, off) => { g.fillStyle = col; const y1 = cy - (b - r.ias) * pp, y2 = cy - (a - r.ias) * pp; g.fillRect(lx + tw - off, y1, 5, y2 - y1); };
       band(40, 85, '#f4f7ff', 5); band(48, 129, '#3ddc84', 10); band(129, 163, '#ffc857', 10); band(163, 400, '#ff5d5d', 10);
     });
-    tape(rx, ty, tw, th, r.alt, 100, 'FT', 'r');
+    const tyR = Math.max(ty, (ui.miniBottom || 0) + 28), thR = Math.max(110, Math.min(th, H - tyR - (ui.touch ? 70 : 150)));
+    tape(rx, tyR, tw, thR, r.alt, 100, 'FT', 'r');
     // VSI pointer beside the altitude tape
-    const vsx = rx - 14, vcy = ty + th / 2, vy = clamp(-r.vs / 2000, -1, 1) * th * 0.45;
-    g.strokeStyle = 'rgba(255,255,255,.3)'; g.lineWidth = 2; g.beginPath(); g.moveTo(vsx, ty + th * 0.05); g.lineTo(vsx, ty + th * 0.95); g.stroke();
+    const vsx = rx - 14, vcy = tyR + thR / 2, vy = clamp(-r.vs / 2000, -1, 1) * thR * 0.45;
+    g.strokeStyle = 'rgba(255,255,255,.3)'; g.lineWidth = 2; g.beginPath(); g.moveTo(vsx, tyR + thR * 0.05); g.lineTo(vsx, tyR + thR * 0.95); g.stroke();
     g.strokeStyle = Math.abs(r.vs) > 1500 ? '#ffc857' : '#5aa9ff'; g.lineWidth = 5; g.beginPath(); g.moveTo(vsx, vcy); g.lineTo(vsx, vcy + vy); g.stroke();
-    g.fillStyle = '#fff'; g.font = font(700, 11); g.textAlign = 'center'; g.fillText((r.vs > 0 ? '+' : '') + Math.round(r.vs / 10) * 10, rx + tw / 2, ty + th + 16);
+    g.fillStyle = '#fff'; g.font = font(700, 11); g.textAlign = 'center'; g.fillText((r.vs > 0 ? '+' : '') + Math.round(r.vs / 10) * 10, rx + tw / 2, tyR + thR + 16);
     g.fillText(`GS ${Math.round(r.gs)}`, lx + tw / 2, ty + th + 16);
-    if (r.agl < 2500 && !r.onGround) { g.fillStyle = '#9ff0c0'; g.fillText(`AGL ${Math.max(0, Math.round(r.agl / 10) * 10)}`, rx + tw / 2, ty + th + 32); }
+    if (r.agl < 2500 && !r.onGround) { g.fillStyle = '#9ff0c0'; g.fillText(`AGL ${Math.max(0, Math.round(r.agl / 10) * 10)}`, rx + tw / 2, tyR + thR + 32); }
     // heading strip
     const hw = Math.min(small ? 260 : 360, W * 0.5), hx = W / 2 - hw / 2, hy = 10 + (ui.st || 0);
     g.save(); box(hx, hy, hw, 34, 10); g.fillStyle = 'rgba(7,17,38,.45)'; g.fill(); g.strokeStyle = 'rgba(255,255,255,.22)'; g.lineWidth = 1; g.stroke(); g.clip();
@@ -71,11 +72,11 @@ export function createHud(canvas) {
     g.fillStyle = Math.abs(r.slip) > 0.5 ? '#ffc857' : '#fff'; g.beginPath(); g.arc(bx + r.slip * (bw / 2 - 9), by, 7, 0, 7); g.fill();
     // power + trim micro gauges (desktop: under the altitude tape; touch shows its own throttle)
     if (!ui.touch) {
-      const gx = rx + tw / 2, gy = ty + th + 50;
+      const gx = rx + tw / 2, gy = tyR + thR + 50;
       g.fillStyle = 'rgba(255,255,255,.75)'; g.font = font(700, 11); g.fillText(`${Math.round(r.rpm / 10) * 10} RPM`, gx, gy);
       const bw2 = tw; box(gx - bw2 / 2, gy + 9, bw2, 6, 3); g.fillStyle = 'rgba(255,255,255,.18)'; g.fill(); box(gx - bw2 / 2, gy + 9, bw2 * ui.thr, 6, 3); g.fillStyle = '#5aa9ff'; g.fill();
     }
-    if (ui.fuel != null) { g.fillStyle = ui.fuel < 8 ? '#ffc857' : 'rgba(255,255,255,.75)'; g.font = font(700, 11); g.textAlign = 'center'; g.fillText(`FUEL ${ui.fuel.toFixed(1)}`, ui.touch ? lx + tw / 2 : rx + tw / 2, ui.touch ? ty + th + (small ? 58 : 64) : ty + th + 80); }
+    if (ui.fuel != null) { g.fillStyle = ui.fuel < 8 ? '#ffc857' : 'rgba(255,255,255,.75)'; g.font = font(700, 11); g.textAlign = 'center'; g.fillText(`FUEL ${ui.fuel.toFixed(1)}`, ui.touch ? lx + tw / 2 : rx + tw / 2, ui.touch ? ty + th + (small ? 58 : 64) : tyR + thR + 80); }
     // trim indicator (small vertical bar left of the speed tape)
     const tix = lx + tw + 10, tiy = ty + th * 0.3, tih = th * 0.4;
     g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(tix, tiy, 3, tih); g.fillStyle = '#3ddc84'; g.beginPath(); g.arc(tix + 1.5, tiy + tih / 2 - ui.trim * tih / 2, 5, 0, 7); g.fill();
@@ -90,7 +91,7 @@ export function createHud(canvas) {
 // ---------------- moving map ----------------
 // sources: { key: { url, max } }. Options (set by the map popup): src, up ('north' | 'track'), zoom.
 export function createMinimap(canvas, sources) {
-  const g = canvas.getContext('2d'), cache = new Map(), o = { src: 'sat', up: 'north', zoom: 13 };
+  const g = canvas.getContext('2d'), cache = new Map(), o = { src: 'sat', up: 'north', zoom: 13, shape: 'circle', size: 'm' };
   const tile = (src, z, x, y) => {
     const n = 2 ** z; x = ((x % n) + n) % n; if (y < 0 || y >= n) return null;
     const k = src + z + '/' + x + '/' + y; let im = cache.get(k);
@@ -100,8 +101,8 @@ export function createMinimap(canvas, sources) {
   const merc = (lat, lon, z) => { const n = 256 * 2 ** z, s = Math.sin(lat * Math.PI / 180); return [(lon + 180) / 360 * n, (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * n]; };
   function draw(lat, lon, hdg, trk, trail, runways) {
     const S = canvas.width, c = S / 2, zoom = o.zoom, src = sources[o.src] ? o.src : 'sat', tz = Math.min(zoom, sources[src].max), k = 2 ** (zoom - tz), [px, py] = merc(lat, lon, zoom);
-    const rot = o.up === 'track' ? -trk * Math.PI / 180 : 0, R = c * 1.45;      // draw a bit past the circle so rotated corners are covered
-    g.save(); g.clearRect(0, 0, S, S); g.beginPath(); g.arc(c, c, c, 0, 7); g.clip(); g.fillStyle = '#16303a'; g.fillRect(0, 0, S, S);
+    const rot = o.up === 'track' ? -trk * Math.PI / 180 : 0, R = c * 1.5;      // draw a bit past the circle so rotated corners are covered
+    g.save(); g.clearRect(0, 0, S, S); g.beginPath(); if (o.shape === 'square') g.rect(0, 0, S, S); else g.arc(c, c, c, 0, 7); g.clip(); g.fillStyle = '#16303a'; g.fillRect(0, 0, S, S);
     g.translate(c, c); g.rotate(rot);
     const ts = 256 * k, tx0 = Math.floor((px - R) / ts), ty0 = Math.floor((py - R) / ts), tx1 = Math.floor((px + R) / ts), ty1 = Math.floor((py + R) / ts);
     for (let x = tx0; x <= tx1; x++) for (let y = ty0; y <= ty1; y++) { const im = tile(src, tz, x, y); if (im) g.drawImage(im, x * ts - px, y * ts - py, ts + 0.5, ts + 0.5); }
@@ -114,7 +115,7 @@ export function createMinimap(canvas, sources) {
     g.beginPath(); g.moveTo(0, -20); g.lineTo(4, -6); g.lineTo(20, 2); g.lineTo(20, 6); g.lineTo(4, 4); g.lineTo(3, 14); g.lineTo(8, 18); g.lineTo(-8, 18); g.lineTo(-3, 14); g.lineTo(-4, 4); g.lineTo(-20, 6); g.lineTo(-20, 2); g.lineTo(-4, -6); g.closePath(); g.stroke(); g.fill();
     g.restore();
     // north marker on the rim
-    const nx = c + Math.sin(rot) * (c - 20), ny = c - Math.cos(rot) * (c - 20);
+    const nr = o.shape === 'square' ? (c - 20) / Math.max(Math.abs(Math.sin(rot)), Math.abs(Math.cos(rot))) : c - 20, nx = c + Math.sin(rot) * nr, ny = c - Math.cos(rot) * nr;
     g.fillStyle = 'rgba(4,16,31,.7)'; g.beginPath(); g.arc(nx, ny, 15, 0, 7); g.fill();
     g.fillStyle = o.up === 'track' ? '#ff5d5d' : '#fff'; g.font = '800 20px ui-monospace,monospace'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('N', nx, ny + 1);
   }

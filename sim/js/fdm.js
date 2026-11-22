@@ -157,7 +157,7 @@ function sub(s, c, dt, env, ac) {
   const Pavail = ac.P * s.pw * Math.pow(sg, 1.1);
   let T = s.pw * Math.pow(sg, 1.1) * Math.min(ac.Tstatic - 8 * V, ac.eta * ac.P / Math.max(V, 1));
   T -= 0.002 * qbar * ac.S * (1 - s.pw);                         // windmilling prop drag at idle
-  s.rpm += ((s.running ? 650 + 2050 * s.pw + 9 * Math.max(0, V - 30) * (1 - 0.4 * s.pw) : Math.max(0, 15 * (V - 22))) - s.rpm) * Math.min(1, dt * (s.running ? 3 : 1.2));
+  s.rpm += ((s.running ? 650 + 2050 * s.pw + 9 * Math.max(0, V - 30) * (1 - 0.4 * s.pw) : c.crank ? 230 : Math.max(0, 15 * (V - 22))) - s.rpm) * Math.min(1, dt * (s.running ? 3 : c.crank ? 2.5 : 1.2));   // starter turns the prop ~230 rpm
   // --- flaps (motor runs ~2.5 s per notch) ---
   const fl = clamp(Math.round(c.flaps), 0, 3); s.flap += clamp(fl - s.flap, -dt / 2.5, dt / 2.5);
   const fi = Math.min(2, Math.floor(s.flap)), ff = s.flap - fi, lerpF = arr => arr[fi] + (arr[fi + 1] - arr[fi]) * ff;

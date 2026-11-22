@@ -1,13 +1,16 @@
 // Fly the Skyhawk: a compact hand-flown Cessna 172S simulator on a real 3D globe.
 // CesiumJS (no ion) + free terrain (AWS Terrain Tiles) + USGS imagery + FAA airports and charts.
-import { C172, createState, step, readout, configure, autoTrim, trimmed } from './fdm.js?v=2';
+import { C172, createState, step, readout, configure, autoTrim, trimmed } from './fdm.js?v=3';
 import { STATIONS, compute as wbCompute, defaults as wbDefaults, drawEnvelope } from './wb.js';
 import { createLink } from './link.js?v=2';
-import { buildAircraftModel } from './model.js';
-import { createTerrainProvider, elevAsync, elevSync } from './terrain.js?v=2';
+import { createOrient } from './orient.js';
+import { createSlippy } from './slippy.js';
+import { createClouds } from './clouds.js?v=2';
+import { buildAircraftModel } from './model.js?v=2';
+import { createTerrainProvider, elevAsync, elevSync } from './terrain.js?v=3';
 import { findAirport, setBusyHandler } from './airport.js?v=2';
-import { createControls } from './controls.js?v=2';
-import { createHud, createMinimap, createAudio } from './hud.js?v=3';
+import { createControls } from './controls.js?v=3';
+import { createHud, createMinimap, createAudio } from './hud.js?v=4';
 
 const C = window.Cesium, D2R = Math.PI / 180, R2D = 180 / Math.PI, FT = 0.3048, KT = 0.514444, RE = 6371000;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v), angDiff = (a, b) => ((b - a + 540) % 360) - 180;
@@ -23,7 +26,7 @@ document.body.classList.toggle('touch', IS_TOUCH);
 
 // ---------------------------------------------------------------- state
 const sim = { flying: false, paused: false, crashedShown: false, cam: 'chase', look: { yaw: 0, pitch: 0, drag: false }, trail: [], trailT: 0, hdgS: null, fly: null, gnd: null, toastT: 0, lastMsg: '', miniT: 0 };
-const opts = Object.assign({ icao: 'KLYH', rwy: null, start: 'runway', time: 'day', sky: 'few', wind: 'calm', map: 'sat', input: 'stick', autotrim: 'on' }, (() => { try { return JSON.parse(localStorage.getItem('skyhawk-setup') || '{}'); } catch { return {}; } })());
+const opts = Object.assign({ engine: 'running', icao: 'KLYH', rwy: null, start: 'runway', time: 'day', sky: 'few', wind: 'calm', map: 'sat', input: 'stick', autotrim: 'on' }, (() => { try { return JSON.parse(localStorage.getItem('skyhawk-setup') || '{}'); } catch { return {}; } })());
 if (!opts.wb || typeof opts.wb !== 'object') opts.wb = wbDefaults();
 let ac = C172, at = {}, elec = { bat: true, alt: true, avn: true, lights: { nav: true, bcn: true, strobe: true, land: false, taxi: false } }, wbFuel = 0, telT = 0;
 let apt = null, s = null, origin = null, viewer, scene, model, meta, lights, rwyLights, clouds, layers = {};
@@ -77,7 +80,7 @@ async function initWorld() {
   let renderErrs = 0;
   scene.renderError.addEventListener((sc, err) => {
     renderErrs++; report('Graphics', err);
-    if (renderErrs === 1 && clouds) { scene.primitives.remove(clouds); clouds = null; }                 // clouds are the heaviest effect
+    if (renderErrs === 1 && sim.clouds && sim.clouds.enabled) sim.clouds.set('clear');                 // clouds are the heaviest effect
     if (renderErrs === 2) { viewer.resolutionScale = 1; scene.fog.enabled = false; globe.maximumScreenSpaceError = 4; }
     if (renderErrs <= 6) setTimeout(() => { viewer.useDefaultRenderLoop = true; }, 300);
   });
@@ -123,22 +126,18 @@ function setTime(kind) {
   let date = at(13.5);
   if (kind === 'dusk') { for (let h = 14; h < 22; h += 1 / 30) { if (sunElevation(at(h), lat, lon) < 3) { date = at(h); break; } } }
   if (kind === 'night') date = at(23.5);
-  viewer.clock.currentTime = C.JulianDate.fromDate(date); sim.sunEl = sunElevation(date, lat, lon); sim.lighting();
+  viewer.clock.currentTime = C.JulianDate.fromDate(date); sim.sunEl = sunElevation(date, lat, lon); sim.lighting(); if (sim.clouds) sim.clouds.light(sim.sunEl);
   rwyLights.show = kind !== 'day'; if (layers.city) layers.city.show = kind !== 'day';   // city lights only cost bandwidth after sunset
   scene.skyAtmosphere.show = true; scene.sun.show = true; scene.moon.show = true;
 }
-function setSky(kind) {
-  if (clouds) { scene.primitives.remove(clouds); clouds = null; }
+function setSky(kind, groundM) {
+  // volumetric cloud layer around wherever the airplane is (bases/tops in metres MSL)
+  if (!sim.clouds) sim.clouds = createClouds(viewer, { lite: LITE });
   scene.fog.density = (kind === 'ovc' ? 4.5e-4 : 2.2e-4) * (LITE ? 1.6 : 1);     // fog also culls distant terrain tiles
-  if (kind === 'clear' || !C.CloudCollection || !apt || LITE > 1) return;
-  clouds = scene.primitives.add(new C.CloudCollection({ noiseDetail: LITE ? 8 : 16 }));
-  let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  const n = Math.round((kind === 'ovc' ? 170 : 70) * (LITE ? 0.3 : 1)), base = apt.elevFt * FT + (kind === 'ovc' ? 2600 : 4200) * FT, R = kind === 'ovc' ? 16000 : 26000;
-  for (let i = 0; i < n; i++) {
-    const a = rnd() * 2 * Math.PI, r = Math.sqrt(rnd()) * R, sx = (kind === 'ovc' ? 1300 : 700) + rnd() * 900, sy = sx * (0.32 + rnd() * 0.18);
-    const lat = apt.lat + Math.cos(a) * r / RE * R2D, lon = apt.lon + Math.sin(a) * r / (RE * Math.cos(apt.lat * D2R)) * R2D;
-    clouds.add({ position: C.Cartesian3.fromDegrees(lon, lat, base + rnd() * (kind === 'ovc' ? 120 : 500) + sy * 0.4), scale: new C.Cartesian2(sx, sy), maximumSize: new C.Cartesian3(sx * 0.9, sy, sy * 0.85), slice: 0.36 + rnd() * 0.1, brightness: kind === 'ovc' ? 0.78 : 1 });
-  }
+  const ref = origin || (apt ? { lat: apt.lat, lon: apt.lon } : { lat: 37, lon: -80 }), gndM = groundM ?? (apt ? apt.elevFt : 0) * FT;
+  if (kind === 'clear' || LITE > 1) return sim.clouds.set('clear');
+  const base = gndM + (kind === 'ovc' ? 2400 : 4500) * FT, top = base + (kind === 'ovc' ? 700 : 1700);
+  sim.clouds.set(kind, base, top, ref); sim.clouds.light(sim.sunEl ?? 40);
 }
 
 // ---------------------------------------------------------------- airport + runway lights
@@ -224,19 +223,21 @@ async function begin() {
   const [n, e] = toNE(lat, lon);
   s = createState({ n, e, h: gh, hdg, kt: air ? 90 : 0, onGround: !air, fuelGal: wbFuel });
   // trim for 90 kt at this weight and CG (elevator angle that balances the pitching moment)
-  const q90 = 0.5 * 1.18 * (90 * KT) ** 2, a90 = (ac.m * 9.81 / (q90 * ac.S) - ac.CL0 - ac.dCLcg) / ac.CLa, trim90 = clamp(-((ac.Cm0 + ac.Cma * a90) / -ac.Cmde) / (9 * D2R), -1, 1);
+  const { a: a90, trim: trim90 } = trimFor(90);
   if (air) { s.pw = 0.55; s.w = s.u * a90; }
   controls.reset(air ? { thr: 0.55, trim: trim90 } : { thr: 0 });
   controls.st.flaps = 0; updateFlapInd();
+  sim.engOn = air || opts.engine !== 'cold'; sim.crankT = 0; if (!sim.engOn) { s.running = false; s.rpm = 0; }
   sim.cam = 'chase'; model.show = true; placeModel(); updateCamera(0.016);
   // let the terrain and imagery under the aircraft stream in before the clock starts
   const t0 = performance.now();
   await new Promise(res => { const chk = () => { if ((scene.globe.tilesLoaded && performance.now() - t0 > 700) || performance.now() - t0 > 9000) res(); else setTimeout(chk, 120); }; chk(); });
   if (!air) { sim.gnd = g0; const gr = groundAt(lat, lon); s.h = gr + ac.gear[1].z - 0.045; sim.gnd = gr; }
-  show('#loading', false); document.body.classList.add('flying'); sim.flying = true; idle(false);
+  show('#loading', false); document.body.classList.add('flying'); sim.flying = true; idle(false); if (IS_TOUCH) orient.activate(true);
   toast(`${apt.icao || apt.ident} · RWY ${end.name}${sim.env.wind.kt ? ` · Wind ${String(Math.round(sim.env.wind.dir / 10) * 10 || 360).padStart(3, '0')}@${sim.env.wind.kt}${sim.env.gust ? 'G' + (sim.env.wind.kt + 8) : ''}` : ''}`);
   audio.resume();
   if (!w.ok) setTimeout(() => toast('Outside POH limits: ' + w.issues[0]), 2800);
+  else if (!sim.engOn && !link.active) setTimeout(() => toast(IS_TOUCH ? 'Hold the key button to start the engine' : 'Hold I to crank the engine'), 2800);
 }
 function show(sel, on) { $(sel).classList.toggle('on', on); }
 
@@ -245,7 +246,7 @@ function groundAt(lat, lon) {
   // source elevation (exact tile data) is the truth; the rendered mesh height is used when it agrees,
   // so the wheels sit on the terrain that is actually drawn. Unloaded "fill" tiles can report nonsense.
   const src = elevSync(lat, lon, 13) ?? elevSync(lat, lon, 11), h = scene.globe.getHeight(C.Cartographic.fromDegrees(lon, lat));
-  if (src != null) return h !== undefined && Math.abs(h - src) < 12 ? h : src;
+  if (src != null) return h !== undefined && Math.abs(h - src) < 1.5 ? h : src;      // a coarser mesh (camera far away) must not move the ground under the wheels
   return sim.gnd ?? apt.elevFt * FT;                     // tile still loading: hold the last known ground
 }
 const NWU = C.Transforms.localFrameToFixedFrameGenerator('north', 'west');
@@ -260,6 +261,7 @@ function placeModel() {
   model.modelMatrix = C.Matrix4.clone(M, model.modelMatrix);
   model.show = sim.cam !== 'cockpit';
   if (s.surf) applySurfaces(s.surf);
+  spinProp();
   const T = meta.tips, t = performance.now() / 1000, night = opts.time !== 'day';
   const P = (v, i, col, on) => { const p = lights.get(i); p.position = C.Matrix4.multiplyByPoint(M, new C.Cartesian3(v[0], v[1], v[2]), new C.Cartesian3()); p.color = col; p.show = on && sim.cam !== 'cockpit'; p.pixelSize = night ? 6 : 4; };
   const L = elec.lights, pwr = elec.bat || (elec.alt && s.running);
@@ -268,10 +270,22 @@ function placeModel() {
   P([2.1, 0, -0.35], 5, C.Color.fromCssColorString('#fff6d8'), pwr && (L.land || L.taxi)); lights.get(5).pixelSize = L.land ? 13 : 9;
   return { lat, lon, r };
 }
+// propeller: real blades while turning slowly (you can watch it crank and catch), a blur disc at speed
+let propAng = 0, propT = performance.now();
+function spinProp() {
+  if (!model.ready) return; const now = performance.now(), dt = Math.min(0.1, (now - propT) / 1000); propT = now;
+  const rpm = s.rpm || 0; propAng = (propAng + rpm / 60 * 2 * Math.PI * dt) % (2 * Math.PI);
+  try {
+    const bl = model.getNode('blades'), dc = model.getNode('disc'), sb = meta.surfs.find(x => x.name === 'blades');
+    if (bl) { bl.show = rpm < 1150; bl.matrix = C.Matrix4.fromRotationTranslation(C.Matrix3.fromQuaternion(C.Quaternion.fromAxisAngle(new C.Cartesian3(...sb.axis), propAng)), new C.Cartesian3(...sb.hinge)); }
+    if (dc) dc.show = rpm > 650;
+  } catch { /* node api */ }
+}
 const surfCache = {};
 function applySurfaces(d) {
   if (!model.ready) return;
   for (const sf of meta.surfs) {
+    if (sf.name === 'disc' || sf.name === 'blades') continue;
     const n = sf.name, deg = n.startsWith('flap') ? d.flap : n === 'ailL' ? d.ail * 18 : n === 'ailR' ? -d.ail * 18 : n.startsWith('elev') ? -d.elev * 24 : d.rud * 24, th = (n === 'rud' ? 1 : sf.sgn) * deg * D2R;
     if (Math.abs((surfCache[n] ?? 9) - th) < 0.004) continue; surfCache[n] = th;
     try { const node = model.getNode(n); if (node) node.matrix = C.Matrix4.fromRotationTranslation(C.Matrix3.fromQuaternion(C.Quaternion.fromAxisAngle(new C.Cartesian3(...sf.axis), th)), new C.Cartesian3(...sf.hinge)); } catch { /* node api */ }
@@ -322,9 +336,15 @@ function frame(dt) {
   if (!s || !model) return;
   if (sim.flying && !sim.paused) {
     let c = controls.update(dt); const [lat, lon] = toLL(s.n, s.e);
-    if (link.active) c = padControls(link.ctl, c); else { c = { ...c, eng: true, ign: 3, mx: 1, sel: 'B', shutoff: false }; elec = ELEC_ON; }
+    if (link.active) c = padControls(link.ctl, c);
+    else {
+      // keyboard / touch: hold I (or the key button) to crank; the engine catches after about 1.3 s
+      if (c.crank && !sim.engOn) { if ((sim.crankT += dt) > 1.3) { sim.engOn = true; toast('Engine started'); } } else sim.crankT = 0;
+      c = { ...c, eng: sim.engOn, crank: c.crank && !sim.engOn, ign: 3, mx: 1, sel: 'B', shutoff: false }; elec = ELEC_ON;
+    }
+    document.body.classList.toggle('engoff', !s.running && !link.active && !s.crashed);
     if (opts.autotrim === 'on') { autoTrim(s, c, at, dt); c = trimmed(c, at); }
-    let g = groundAt(lat, lon); if (sim.gnd != null) g = sim.gnd + clamp(g - sim.gnd, -30 * dt, 30 * dt); sim.gnd = g;
+    let g = groundAt(lat, lon); if (sim.gnd != null) { const lim = (s.onGround ? 4 : 30) + Math.hypot(s.vn, s.ve) * 0.5; g = sim.gnd + clamp(g - sim.gnd, -lim * dt, lim * dt); } sim.gnd = g;
     for (let k = 0; k < (sim.timeScale || 1); k++) step(s, c, dt, { ground: g, wind: sim.env.wind, gust: sim.env.gust }, ac);   // timeScale: test hook
     // fuel burned changes the weight and CG
     const fuel = s.fuelL + s.fuelR; if (Math.abs(fuel - wbFuel) > 0.25) { wbFuel = fuel; const w = wbCompute(opts.wb, fuel); ac = configure(w.lb, w.cg); }
@@ -334,7 +354,7 @@ function frame(dt) {
   if (!sim.flying) return;
   const pfd = elec.bat || (elec.alt && s.running);
   document.body.classList.toggle('pfdoff', !pfd); document.body.classList.toggle('mfdoff', !pfd || !elec.avn);
-  hud.draw(r, { touch: IS_TOUCH, thr: controls.st.thr, trim: clamp(controls.st.trim + (opts.autotrim === 'on' ? (at.pt || 0) : 0), -1, 1), cam: sim.cam, fuel: s.fuelL + s.fuelR });
+  const mm = $('#minimap'); hud.draw(r, { miniBottom: mm.classList.contains('off') || document.body.classList.contains('mfdoff') ? 0 : mm.offsetTop + mm.offsetHeight, touch: IS_TOUCH, thr: controls.st.thr, trim: clamp(controls.st.trim + (opts.autotrim === 'on' ? (at.pt || 0) : 0), -1, 1), cam: sim.cam, fuel: s.fuelL + s.fuelR });
   audio.update(r, sim.paused);
   // status chips
   const chips = [];
@@ -352,6 +372,47 @@ function frame(dt) {
   if (s.crashed && !sim.crashedShown) { sim.crashedShown = true; setTimeout(() => { $('#crashWhy').textContent = s.crashed; show('#crash', true); }, 1300); }
 }
 
+// elevator trim and angle of attack for level flight at a speed (this weight and CG)
+function trimFor(kt, h = 1000) { const q = 0.5 * 1.225 * Math.pow(Math.max(0.2, 1 - 2.25577e-5 * h), 4.2559) * (kt * KT) ** 2, a = (ac.m * 9.81 / (q * ac.S) - ac.CL0 - (ac.dCLcg || 0)) / ac.CLa; return { a, trim: clamp(-((ac.Cm0 + ac.Cma * a) / -ac.Cmde) / (9 * D2R), -1, 1) }; }
+
+// ---------------------------------------------------------------- drop the airplane anywhere
+let slip = null, dropGround = null;
+function openDrop() {
+  show('#dropSheet', true);
+  if (!slip) {
+    slip = createSlippy($('#dropMap'), { tileUrl: SAT_TILES, P: e => orient.P(e), R: el => orient.R(el), onPick: async m => {
+      $('#dropHint').textContent = 'Drag the map, or tap again to move the spot'; $('#dropGo').disabled = false; dropGround = null;
+      $('#dropGnd').textContent = `${Math.abs(m.lat).toFixed(4)}°${m.lat >= 0 ? 'N' : 'S'} ${Math.abs(m.lon).toFixed(4)}°${m.lon >= 0 ? 'E' : 'W'} · ground elevation…`;
+      const g = await Promise.race([elevAsync(m.lat, m.lon, 11).catch(() => null), new Promise(r => setTimeout(() => r(null), 4000))]);
+      if (slip.v.mark !== m) return; dropGround = g;
+      if (g != null) { $('#dropGnd').textContent = `${Math.abs(m.lat).toFixed(4)}°${m.lat >= 0 ? 'N' : 'S'} ${Math.abs(m.lon).toFixed(4)}°${m.lon >= 0 ? 'E' : 'W'} · ground ${Math.round(g / FT).toLocaleString()} ft`; const alt = $('#dropAlt'); if (+alt.value < g / FT + 500) alt.value = Math.ceil((g / FT + 1500) / 500) * 500; }
+    } });
+    $('#dropHdg').addEventListener('input', () => { slip.v.hdg = +$('#dropHdg').value || 0; slip.draw(); });
+    $$('.dropzoom button').forEach(b => b.onclick = () => { if (b.dataset.zoom === 'me') { const [la, lo] = toLL(s.n, s.e); slip.center(la, lo, 11); } else slip.zoom(+b.dataset.zoom); });
+    const go = $('#dropApt'); go.addEventListener('keydown', async e => { if (e.key !== 'Enter') return; e.preventDefault(); go.blur(); try { const a = await findAirport(go.value); if (a) slip.center(a.lat, a.lon, 13); else toast('Airport not found'); } catch { toast('FAA lookup failed'); } });
+    go.addEventListener('input', () => { go.value = go.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
+    $('#dropGo').onclick = () => { const m = slip.v.mark; if (m) dropAt(m.lat, m.lon, +$('#dropHdg').value || 0, +$('#dropAlt').value || 3000, clamp(+$('#dropKt').value || 100, 60, 160)); };
+  }
+  const r = readout(s, sim.gnd ?? 0), [la, lo] = toLL(s.n, s.e);
+  slip.v.url = sources()[minimap.o.src] ? sources()[minimap.o.src].url : SAT_TILES; slip.v.maxZ = minimap.o.src === 'sectional' ? 12 : 16;
+  slip.v.plane = { lat: la, lon: lo, hdg: r.hdg }; slip.v.hdg = +$('#dropHdg').value || Math.round(r.hdg / 10) * 10 || 360; $('#dropHdg').value = slip.v.hdg;
+  if (!slip.v.mark) slip.center(la, lo, 10); else { slip.size(); slip.draw(); }
+}
+function sources() { return { sat: { url: SAT_TILES, max: 16 }, topo: { url: USGS + '/USGSTopo/MapServer/tile/{z}/{y}/{x}', max: 16 }, sectional: { url: FAA_TILES + '/VFR_Sectional/MapServer/tile/{z}/{y}/{x}', max: 12 } }; }
+async function dropAt(lat, lon, hdg, altFt, kt) {
+  show('#dropSheet', false); show('#loading', true);
+  const g = dropGround ?? await Promise.race([elevAsync(lat, lon, 13).catch(() => null), new Promise(r => setTimeout(() => r(null), 4000))]) ?? 0;
+  let h = altFt * FT; if (h < g + 150) { h = g + 1000 * FT; toast('Raised to 1,000 ft above the ground'); }
+  origin = { lat, lon }; const fuel = s.fuelL + s.fuelR, { a, trim } = trimFor(kt, h);
+  s = createState({ n: 0, e: 0, h, hdg, kt, onGround: false, fuelGal: fuel }); s.pw = 0.6; s.w = s.u * a;
+  controls.reset({ thr: 0.6, trim }); controls.st.flaps = 0; updateFlapInd(); at = {}; sim.engOn = true; sim.gnd = g; sim.trail = []; sim.hdgS = null; sim.fly = null; s.msg = '';
+  setSky(opts.sky, g);
+  const t0 = performance.now(); placeModel(); updateCamera(0.016); scene.requestRender();
+  await new Promise(res => { const chk = () => { if ((scene.globe.tilesLoaded && performance.now() - t0 > 600) || performance.now() - t0 > 7000) res(); else setTimeout(chk, 120); }; chk(); });
+  show('#loading', false); sim.mapPaused = false; sim.paused = false; sim.crashedShown = false; show('#crash', false); audio.resume();
+  toast(`Dropped · ${String(Math.round(hdg) % 360 || 360).padStart(3, '0')}° · ${Math.round(h / FT).toLocaleString()} ft`);
+}
+
 // ---------------------------------------------------------------- phone cockpit
 const ELEC_ON = { bat: true, alt: true, avn: true, lights: { nav: true, bcn: true, strobe: true, land: false, taxi: false } };
 function padControls(p, kb) {
@@ -359,7 +420,7 @@ function padControls(p, kb) {
   const park = p.park ? 1 : 0, brk = Math.max(park, p.brkL || 0, p.brkR || 0, kb.brk);
   if (controls.st.flaps !== p.fl) { controls.st.flaps = p.fl; updateFlapInd(); }
   controls.st.thr = p.th; controls.st.trim = p.pt; controls.st.brk = brk;
-  return { de: clamp(p.e + kb.de, -1, 1), da: clamp(p.a + kb.da, -1, 1), dr: clamp(p.r + kb.dr, -1, 1), thr: p.th, mx: p.mx, flaps: p.fl, brk, brkDiff: park ? 0 : (p.brkR || 0) - (p.brkL || 0), trim: p.pt, ign: p.ign, eng: p.eng, sel: p.sel, shutoff: p.shutoff };
+  return { de: clamp(p.e + kb.de, -1, 1), da: clamp(p.a + kb.da, -1, 1), dr: clamp(p.r + kb.dr, -1, 1), thr: p.th, mx: p.mx, flaps: p.fl, brk, brkDiff: park ? 0 : (p.brkR || 0) - (p.brkL || 0), trim: p.pt, ign: p.ign, crank: !!p.crank, eng: p.eng, sel: p.sel, shutoff: p.shutoff };
 }
 const link = createLink({
   onState(st, detail) {
@@ -411,7 +472,7 @@ function act(a) {
   switch (a) {
     case 'pause': if (helpOpen) return act('closeHelp'); pause(!sim.paused); break;
     case 'resume': pause(false); break;
-    case 'escape': if ($('#mapSheet').classList.contains('on')) act('closeMap'); else if ($('#wb').classList.contains('on')) act('closeWb'); else if ($('#phone').classList.contains('on')) act('closePhone'); else if (helpOpen) act('closeHelp'); else if ($('#setup').classList.contains('on')) { if (sim.flying) { show('#setup', false); pause(true); } else act('exit'); } else if (sim.flying) pause(!sim.paused); break;
+    case 'escape': if ($('#dropSheet').classList.contains('on')) act('closeDrop'); else if ($('#mapSheet').classList.contains('on')) act('closeMap'); else if ($('#wb').classList.contains('on')) act('closeWb'); else if ($('#phone').classList.contains('on')) act('closePhone'); else if (helpOpen) act('closeHelp'); else if ($('#setup').classList.contains('on')) { if (sim.flying) { show('#setup', false); pause(true); } else act('exit'); } else if (sim.flying) pause(!sim.paused); break;
     case 'cam': sim.cam = CAMS[(CAMS.indexOf(sim.cam) + 1) % CAMS.length]; sim.fly = null; sim.hdgS = null; toast({ chase: 'Chase view', cockpit: 'Cockpit view', flyby: 'Fly-by view' }[sim.cam]); break;
     case 'flapsDown': controls.st.flaps = Math.min(3, controls.st.flaps + 1); updateFlapInd(); break;
     case 'flapsUp': controls.st.flaps = Math.max(0, controls.st.flaps - 1); updateFlapInd(); break;
@@ -419,6 +480,8 @@ function act(a) {
     case 'time': opts.time = { day: 'dusk', dusk: 'night', night: 'day' }[opts.time]; setTime(opts.time); toast({ day: 'Day', dusk: 'Dusk', night: 'Night' }[opts.time]); syncSeg('time'); break;
     case 'mini': $('#minimap').classList.toggle('off'); break;
     case 'mapMenu': if (!sim.flying) return; if (!sim.paused) { sim.mapPaused = true; sim.paused = true; audio.suspend(); } syncMapSheet(); show('#mapSheet', true); break;
+    case 'dropMenu': show('#mapSheet', false); openDrop(); break;
+    case 'closeDrop': show('#dropSheet', false); if (sim.mapPaused) { sim.mapPaused = false; sim.paused = false; audio.resume(); } break;
     case 'closeMap': show('#mapSheet', false); try { localStorage.setItem('skyhawk-setup', JSON.stringify(opts)); } catch { /* private */ } if (sim.mapPaused) { sim.mapPaused = false; sim.paused = false; audio.resume(); } break;
     case 'sound': audio.on = !audio.on; $('#bar').dataset.sound = audio.on ? 'on' : 'off'; if (!audio.on) audio.suspend(); break;
     case 'help': if (!sim.flying) return; show('#help', !helpOpen); if (!helpOpen && !sim.paused) { sim.helpPaused = true; sim.paused = true; } break;
@@ -447,19 +510,24 @@ gEl.addEventListener('pointermove', e => { const d = sim.look.drag; if (!d) retu
 gEl.addEventListener('pointerup', () => { sim.look.drag = false; });
 
 // ---------------------------------------------------------------- boot
-const controls = createControls({ onAction: act }), hud = createHud($('#hud')), minimap = createMinimap($('#minimap'), { sat: { url: SAT_TILES, max: 16 }, topo: { url: USGS + '/USGSTopo/MapServer/tile/{z}/{y}/{x}', max: 16 }, sectional: { url: FAA_TILES + '/VFR_Sectional/MapServer/tile/{z}/{y}/{x}', max: 12 } }), audio = createAudio();
-if (IS_TOUCH) $('#minimap').width = $('#minimap').height = 240;
-else $('#minimap').width = $('#minimap').height = 300;
+function sizeClasses() { const a = $('#app'), w = a.clientWidth, h = a.clientHeight, b = document.body.classList; b.toggle('w760', w <= 760); b.toggle('h430', h <= 430); b.toggle('h500', h <= 500); }
+const orient = createOrient($('#app'), { onChange: () => requestAnimationFrame(sizeClasses) });
+addEventListener('resize', () => setTimeout(sizeClasses, 80)); sizeClasses();
+const controls = createControls({ onAction: act, orient }), hud = createHud($('#hud')), minimap = createMinimap($('#minimap'), sources()), audio = createAudio();
+
 await initWorld();
 icao.value = opts.icao || ''; if (icao.value) lookup();
 setTimeout(() => { if (!IS_TOUCH) icao.focus({ preventScroll: true }); }, 300);
 // moving-map popup: tap the map circle
 if (!opts.mini) opts.mini = { src: 'sat', up: 'north', zoom: 13 };
 Object.assign(minimap.o, opts.mini);
+const MINI_PX = { s: [150, 112], m: [210, 150], l: [300, 210] };
+function styleMini() { const el = $('#minimap'), px = (MINI_PX[minimap.o.size] || MINI_PX.m)[IS_TOUCH ? 1 : 0]; el.classList.toggle('square', minimap.o.shape === 'square'); el.style.width = el.style.height = px + 'px'; el.width = el.height = Math.round(px * Math.min(2, devicePixelRatio || 1)); sim.miniT = 0; }
+styleMini();
 function syncMapSheet() { $$('#mapSheet .seg button').forEach(b => b.classList.toggle('on', String(minimap.o[b.parentElement.dataset.mini]) === b.dataset.v)); }
-$$('#mapSheet .seg button').forEach(b => b.addEventListener('click', () => { const k = b.parentElement.dataset.mini; minimap.o[k] = k === 'zoom' ? +b.dataset.v : b.dataset.v; opts.mini = { ...minimap.o }; sim.miniT = 0; syncMapSheet(); }));
+$$('#mapSheet .seg button').forEach(b => b.addEventListener('click', () => { const k = b.parentElement.dataset.mini; minimap.o[k] = k === 'zoom' ? +b.dataset.v : b.dataset.v; opts.mini = { ...minimap.o }; styleMini(); syncMapSheet(); }));
 $('#minimap').addEventListener('click', () => act('mapMenu'));
 $('#errbox').addEventListener('click', () => $('#errbox').classList.remove('on'));
 try { if (sessionStorage.getItem('skyhawk-lowmsg')) { sessionStorage.removeItem('skyhawk-lowmsg'); setTimeout(() => { aptInfo.textContent = 'Switched to low-detail graphics for this device. Press Start.'; aptInfo.className = 'ok'; }, 2500); } } catch { /* private */ }
 wbUi();
-window.__sim = { link, get ac() { return ac; }, get elec() { return elec; }, sim, opts, get s() { return s; }, get apt() { return apt; }, act, readout: () => s && readout(s), viewer: () => viewer, controls };
+window.__sim = { dropAt, link, get ac() { return ac; }, get elec() { return elec; }, sim, opts, get s() { return s; }, get apt() { return apt; }, act, readout: () => s && readout(s), viewer: () => viewer, controls };

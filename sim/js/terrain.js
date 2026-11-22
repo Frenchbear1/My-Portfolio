@@ -16,16 +16,24 @@ function initWorkers() {
     workers.push(w);
   }
 }
+// one request to a worker, with a timeout: a single stalled download must never hold the globe hostage
+function request(url, ms) {
+  return new Promise((res, rej) => {
+    const id = ++seq, timer = setTimeout(() => { if (pending.delete(id)) rej(new Error('timeout')); }, ms);
+    pending.set(id, { res: d => { clearTimeout(timer); res(d); }, rej: e => { clearTimeout(timer); rej(e); } });
+    workers[rr++ % workers.length].postMessage({ id, url });
+  });
+}
 function loadTile(z, x, y) {
   const key = z + '/' + x + '/' + y, hit = cache.get(key);
   if (hit) { cache.delete(key); cache.set(key, hit); return hit instanceof Int16Array ? Promise.resolve(hit) : hit; }
   if (!workers.length) initWorkers();
   const n = 1 << z, url = new URL(TERRAIN_URL.replace('{z}', z).replace('{x}', ((x % n) + n) % n).replace('{y}', y), location.href).href;
-  const p = new Promise((res, rej) => { const id = ++seq; pending.set(id, { res, rej }); workers[rr++ % workers.length].postMessage({ id, url }); })
+  const p = request(url, 8000).catch(() => request(url, 10000)).catch(() => request(url, 14000))
     .then(d => { cache.set(key, d); terrainStats.ok++; return d; })
-    .catch(() => { terrainStats.fail++; const flat = new Int16Array(65536); cache.set(key, flat); return flat; });
+    .catch(() => { terrainStats.fail++; cache.delete(key); return new Int16Array(65536); });    // give up for now (not cached, so it is retried later)
   cache.set(key, p);
-  if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value);
+  if (cache.size > CACHE_MAX) { const k = cache.keys().next().value; if (cache.get(k) instanceof Int16Array) cache.delete(k); }
   return p;
 }
 function bilinear(d, fx, fy) {
