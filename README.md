@@ -119,6 +119,18 @@ same scroll position and unloads the sim.
   172 stability derivatives, a stall break (clean stall about 48 KIAS), post-stall
   autorotation so an uncoordinated stall drops a wing and spins, left-turning tendencies,
   flaps, trim, and spring/damper landing gear with brakes and nose-wheel steering.
+- **Weight & balance**: 172S POH stations (front seats 37.0, rear 73.0, baggage 95.0/123.0,
+  fuel 48.0 in), normal and utility envelopes and an editable empty weight. Weight changes
+  mass, inertia, stall and lift-off speeds, ground roll and climb; CG changes pitch stability
+  and stick feel (aft CG spins faster and recovers slower). Fuel burns off in flight and a dry
+  tank stops the engine.
+- **Auto-trim** (on by default): trims out held elevator, holds the attitude and bank where you
+  let go and centres the ball, but stays out of the way near the stall or with rudder in.
+- **Phone cockpit** (`sim/pad.html`): scan the QR code in setup and the phone becomes a 172S
+  panel (split master, avionics buses, light switches, key, throttle, mixture, fuel selector
+  and shutoff, trim wheel, flaps, pedals with toe brakes, parking brake) with tach and fuel
+  gauges, tilted like a yoke. It links straight to the computer over WebRTC using the free
+  PeerJS broker, so no server is needed.
 - **Controls**: arrows pitch/roll, A/D rudder, W/S throttle, F/V flaps, Q/E trim, Space brakes,
   C camera (chase, cockpit, fly-by), M map, N time, P pause. Phones and iPads get an
   on-screen joystick (or device tilt), rudder pedals, throttle, trim and brake, with the
